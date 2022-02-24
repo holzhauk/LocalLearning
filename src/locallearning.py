@@ -8,15 +8,16 @@ from torch import nn
 from torch import Tensor
 from tqdm import tqdm
 
+
 class LocalLearningModel(nn.Module):
-    class pSet():
+    class pSet:
         def __init__(self):
-            self.in_size = 28**2 # default is MNIST
+            self.in_size = 28 ** 2  # default is MNIST
             self.hidden_size = 2000
             self.p = 2
-            self.tau_l = 0.1 # local learning time scale
+            self.tau_l = 0.1  # local learning time scale
             self.k = 2
-            self.Delta = 0.1 # inhibition rate
+            self.Delta = 0.1  # inhibition rate
             self.R = 5.0
 
     def __init__(self, params: pSet):
@@ -24,11 +25,9 @@ class LocalLearningModel(nn.Module):
         self.params = params
         self.flatten = nn.Flatten(start_dim=1, end_dim=-1)
         #  initialize weights
-        self.W = torch.zeros((self.params.in_size, \
-                    self.params.hidden_size))
-        #self.W = nn.Parameter(self.W) # W is a model parameter
-        std = 1.0 / math.sqrt(self.params.in_size + \
-                self.params.hidden_size)
+        self.W = torch.zeros((self.params.in_size, self.params.hidden_size))
+        # self.W = nn.Parameter(self.W) # W is a model parameter
+        std = 1.0 / math.sqrt(self.params.in_size + self.params.hidden_size)
         self.W.normal_(mean=0.0, std=std)
 
     def __metric_tensor(self):
@@ -48,7 +47,7 @@ class LocalLearningModel(nn.Module):
         g_q = torch.zeros(q.size())
         sorted_idxs = q.argsort(descending=True)
         g_q[..., sorted_idxs[..., 0]] = 1.0
-        g_q[..., sorted_idxs[..., 1:self.params.k + 1]] = -self.params.Delta
+        g_q[..., sorted_idxs[..., 1 : self.params.k + 1]] = -self.params.Delta
         return g_q
 
     def __weight_increment(self, v: Tensor) -> Tensor:
@@ -56,9 +55,10 @@ class LocalLearningModel(nn.Module):
         v = self.flatten(v)
         Q = torch.div(h, self.__matrix_bracket(self.W, self.W))
         Q = torch.pow(Q, (self.params.p - 1.0) / self.params.p)
-        inc = (self.params.R**self.params.p)*v[..., None] - \
-                torch.mul(h[None, ...].transpose(0, 1), self.W)
-        inc = torch.mul(self.__g(Q)[None, ...].transpose(0, 1), inc)
+        inc = (self.params.R ** self.params.p) * v[..., None] - torch.mul(
+            h[:, None, ...], self.W
+        )
+        inc = torch.mul(self.__g(Q)[:, None, ...], inc)
         return inc
 
     def forward(self, x):
@@ -71,37 +71,34 @@ class LocalLearningModel(nn.Module):
         # dW = self.__weight_increment(x) / self.params.tau_l
         # dW_mean = torch.sum(dW, dim=0) / dW.size(dim=0)
         # self.W += dW_mean
-        
+
         # sequential training in mini batch time:
         for v in x:
-            self.W += self.__weight_increment(v)[0] / self.params.tau_l 
+            self.W += self.__weight_increment(v)[0] / self.params.tau_l
 
 
-def train_unsupervised(dataloader, model: LocalLearningModel) -> None:
+def train_unsupervised(
+    dataloader: DataLoader, model: LocalLearningModel, no_epochs=5
+) -> None:
     with torch.no_grad():
-        dSet_size = len(dataloader.dataset)
-        print(f"Start training - DataSet size: {dSet_size}")
-        for batch_nr, (x, label) in enumerate(dataloader):
-            print(f"mini batch: {batch_nr}")
-            model.train(x)
+        for epoch in range(1, no_epochs):
+            with tqdm(dataloader, unit="batch") as tepoch:
+                tepoch.set_description(f"Epoch: {epoch}")
+                for x, label in tepoch:
+                    model.train(x)
+
 
 if __name__ == "__main__":
     model_ps = LocalLearningModel.pSet()
     model = LocalLearningModel(model_ps)
 
     training_data = datasets.MNIST(
-        root="../data/MNIST",
-        train=True,
-        download=True,
-        transform=ToTensor()
-            )
-    
+        root="../data/MNIST", train=True, download=True, transform=ToTensor()
+    )
+
     test_data = datasets.MNIST(
-        root="../data/MNIST",
-        train=False,
-        download=True,
-        transform=ToTensor()
-            )
-    
+        root="../data/MNIST", train=False, download=True, transform=ToTensor()
+    )
+
     dataloader_train = DataLoader(training_data, batch_size=64)
     train_unsupervised(dataloader_train, model)
