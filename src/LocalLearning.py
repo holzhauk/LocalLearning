@@ -23,12 +23,15 @@ class LocalLearningModel(nn.Module):
     def __init__(self, params: pSet):
         super(LocalLearningModel, self).__init__()
         self.params = params
-        self.flatten = nn.Flatten(start_dim=1, end_dim=-1)
-        #  initialize weights
-        self.W = torch.zeros((self.params.in_size, self.params.hidden_size))
-        # self.W = nn.Parameter(self.W) # W is a model parameter
-        std = 1.0 / math.sqrt(self.params.in_size + self.params.hidden_size)
-        self.W.normal_(mean=0.0, std=std)
+        with torch.no_grad():
+            self.flatten = nn.Flatten(start_dim=1, end_dim=-1)
+            #  initialize weights
+            self.W = nn.Parameter(
+                torch.zeros((self.params.in_size, self.params.hidden_size))
+            )
+            # self.W = nn.Parameter(self.W) # W is a model parameter
+            std = 1.0 / math.sqrt(self.params.in_size + self.params.hidden_size)
+            self.W.normal_(mean=0.0, std=std)
 
     def __metric_tensor(self):
         eta = torch.abs(self.W)
@@ -44,7 +47,7 @@ class LocalLearningModel(nn.Module):
         return torch.sum(res, dim=0)
 
     def __g(self, q: Tensor) -> Tensor:
-        g_q = torch.zeros(q.size())
+        g_q = torch.zeros(q.size(), device=self.W.device)
         sorted_idxs = q.argsort(descending=True)
         g_q[..., sorted_idxs[..., 0]] = 1.0
         g_q[..., sorted_idxs[..., 1 : self.params.k + 1]] = -self.params.Delta
@@ -78,14 +81,14 @@ class LocalLearningModel(nn.Module):
 
 
 def train_unsupervised(
-    dataloader: DataLoader, model: LocalLearningModel, no_epochs=5
+    dataloader: DataLoader, model: LocalLearningModel, device: torch.device, no_epochs=5
 ) -> None:
     with torch.no_grad():
         for epoch in range(1, no_epochs):
             with tqdm(dataloader, unit="batch") as tepoch:
                 tepoch.set_description(f"Epoch: {epoch}")
                 for x, label in tepoch:
-                    model.train(x)
+                    model.train(x.to(device))
 
 
 if __name__ == "__main__":
