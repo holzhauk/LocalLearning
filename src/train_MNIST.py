@@ -22,14 +22,15 @@ if __name__ == "__main__":
     if not os.path.exists(model_path.parent):
         os.makedirs(model_path.parent)
 
-    model_ps = LocalLearningModel.pSet()
-    model_ps.in_size = 28 ** 2  # MNIST dataset consists of 28x28 pixel imgs
-    model_ps.hidden_size = 2000
-    model_ps.p = 2
-    model_ps.tau_l = 0.1  # 1 / learning rate
-    model_ps.k = 2
-    model_ps.Delta = 0.1  # inhibition rate
-    model_ps.R = 5.0  # asymptotic weight norm radius
+    model_ps = {
+        "in_size": 28 ** 2, # MNIST dataset consists of 28x28 pixel imgs
+        "hidden_size": 2000,
+        "p": 3.0,
+        "tau_l": 1.0 / 0.1, # 1 / learning rate
+        "k": 7,
+        "Delta": 0.4, # inhibition rate
+        "R": 1.0 # asymptotic weight norm radius
+    }
 
     model = LocalLearningModel(model_ps)
     model.to(device=device)
@@ -38,9 +39,15 @@ if __name__ == "__main__":
         root="../data/MNIST", train=True, download=True, transform=ToTensor()
     )
 
-    dataloader_train = DataLoader(training_data, batch_size=64)
+    dataloader_train = DataLoader(
+            training_data, batch_size=64, num_workers=2, shuffle=True
+    )
     train_unsupervised(dataloader_train, model, device)
 
     torch.save(
-        {"model_state_dict": model.state_dict(), "device_type": device.type}, model_path
+        {
+            "model_state_dict": model.state_dict(),
+            "model_parameters": model.pSet,
+            "device_type": device.type
+            }, model_path
     )
