@@ -78,6 +78,13 @@ class LocalLearningModel(nn.Module):
         hidden = self.__bracket(x, self.W)
         return hidden
 
+    def param_dict(self) -> dict:
+        return self.pSet
+
+    def eval(self) -> None:
+        pass
+
+
     def train(self, x: Tensor) -> None:
         # mean training, treating each mini batch as a sample:
         # dW = self.__weight_increment(x) / self.params.tau_l
