@@ -65,8 +65,10 @@ class LocalLearningModel(nn.Module):
     def __weight_increment(self, v: Tensor) -> Tensor:
         h = self.forward(v)
         v = self.flatten(v)
-        Q = torch.div(h, self.__matrix_bracket(self.W, self.W))
-        Q = torch.pow(Q, (self.pSet["p"] - 1.0) / self.pSet["p"])
+        Q = torch.pow(
+                self.__matrix_bracket(self.W, self.W), (self.pSet["p"] - 1.0) / self.pSet["p"]
+                )
+        Q = torch.div(h, Q)
         inc = (self.pSet["R"] ** self.pSet["p"]) * v[..., None] - torch.mul(
             h[:, None, ...], self.W
         )
