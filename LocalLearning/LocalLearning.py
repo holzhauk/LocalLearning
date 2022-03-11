@@ -33,10 +33,11 @@ class LocalLearningModel(nn.Module):
         self.pSet["R"] = params["R"]
 
         with torch.no_grad():
-            self.flatten = nn.Flatten(start_dim=1, end_dim=-1)
+            self.flatten = nn.Flatten()
             #  initialize weights
             self.W = nn.Parameter(
-                torch.zeros((self.pSet["in_size"], self.pSet["hidden_size"]))
+                torch.zeros((self.pSet["in_size"], self.pSet["hidden_size"])),
+                requires_grad=False
             )
             # self.W = nn.Parameter(self.W) # W is a model parameter
             std = 1.0 / math.sqrt(self.pSet["in_size"] + self.pSet["hidden_size"])
@@ -63,8 +64,7 @@ class LocalLearningModel(nn.Module):
         return g_q
 
     def __weight_increment(self, v: Tensor) -> Tensor:
-        h = self.forward(v)
-        v = self.flatten(v)
+        h = self.__bracket(v, self.W)
         Q = torch.pow(
             self.__matrix_bracket(self.W, self.W),
             (self.pSet["p"] - 1.0) / self.pSet["p"],
@@ -94,15 +94,17 @@ class LocalLearningModel(nn.Module):
         # self.W += dW_mean
 
         # sequential training in mini batch time:
-        for v in x:
-            self.W += self.__weight_increment(v)[0] / self.pSet["tau_l"]
+        x_flat = self.flatten(x)
+        for v in x_flat:
+            v = v[None, ...] # single element -> minibatch of size 1
+            self.W += self.__weight_increment(v).sum(dim=0) / self.pSet["tau_l"]
 
 
 def train_unsupervised(
     dataloader: DataLoader, model: LocalLearningModel, device: torch.device, no_epochs=5
 ) -> None:
     with torch.no_grad():
-        for epoch in range(1, no_epochs):
+        for epoch in range(no_epochs):
             with tqdm(dataloader, unit="batch") as tepoch:
                 tepoch.set_description(f"Epoch: {epoch}")
                 for x, label in tepoch:

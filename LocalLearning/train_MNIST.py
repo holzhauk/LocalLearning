@@ -48,7 +48,7 @@ if __name__ == "__main__":
         {
             "model_state_dict": model.state_dict(),
             "model_parameters": model.param_dict(),
-            "device_type": device.type,
+            "device_type": device.type
         },
         model_path,
     )

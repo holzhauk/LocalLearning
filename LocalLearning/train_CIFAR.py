@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     model = LocalLearningModel(model_ps)
     model.to(device=device)
-
+    
     training_data = datasets.CIFAR10(
         root="../data/CIFAR10", train=True, download=True, transform=ToTensor()
     )
