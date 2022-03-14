@@ -1,0 +1,35 @@
+#
+# style sheet according to PRL author guidelines for double column sized figures
+#
+# Konstantin Holzhausen
+#
+
+figure.figsize:		6.75, 7.0	# figure size in inches
+figure.subplot.wspace:	0.3
+figure.subplot.hspace:	0.3
+
+text.usetex:		True
+
+font.size:		10
+font.family:		serif
+font.weight:		normal
+font.serif:		Computer Modern Roman
+
+legend.fontsize:	10
+legend.frameon:		False
+
+axes.labelsize:		10
+axes.titlesize:		10
+axes.labelweight:	normal
+axes.spines.top:	False
+axes.spines.right:	False
+
+lines.linewidth:	1.0
+lines.markeredgewidth:	0.5
+lines.markeredgecolor:	black
+
+xtick.labelsize:	8
+ytick.labelsize:	8
+
+savefig.format:		pdf
+
