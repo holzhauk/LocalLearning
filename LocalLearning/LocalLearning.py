@@ -14,6 +14,7 @@ class LocalLearningModel(nn.Module):
     pSet = {
         "in_size": 28**2,
         "hidden_size": 2000,
+        "n": 4.5,
         "p": 3,
         "tau_l": 10.0,
         "k": 7,
@@ -26,6 +27,7 @@ class LocalLearningModel(nn.Module):
 
         self.pSet["in_size"] = params["in_size"]
         self.pSet["hidden_size"] = params["hidden_size"]
+        self.pSet["n"] = params["n"]
         self.pSet["p"] = params["p"]
         self.pSet["tau_l"] = params["tau_l"]
         self.pSet["k"] = params["k"]
@@ -42,6 +44,8 @@ class LocalLearningModel(nn.Module):
             # self.W = nn.Parameter(self.W) # W is a model parameter
             std = 1.0 / math.sqrt(self.pSet["in_size"] + self.pSet["hidden_size"])
             self.W.normal_(mean=0.0, std=std)
+            
+            self.relu = nn.ReLU()
 
     def __metric_tensor(self):
         eta = torch.abs(self.W)
@@ -78,8 +82,9 @@ class LocalLearningModel(nn.Module):
 
     def forward(self, x):
         x = self.flatten(x)
-        hidden = self.__bracket(x, self.W)
-        return hidden
+        hidden = torch.matmul(x, self.W)
+        output = torch.pow(self.relu(hidden), self.pSet["n"])
+        return output 
 
     def param_dict(self) -> dict:
         return self.pSet
@@ -100,15 +105,56 @@ class LocalLearningModel(nn.Module):
             self.W += self.__weight_increment(v).sum(dim=0) / self.pSet["tau_l"]
 
 
+class BioLearningModel(nn.Module):
+
+    pSet = {}
+
+    def __init__(self, ll_trained_state: dict):
+        super(BioLearningModel, self).__init__()
+
+        local_learning_params = ll_trained_state["model_parameters"]
+        self.local_learning = LocalLearningModel(local_learning_params)
+        self.local_learning.load_state_dict(ll_trained_state["model_state_dict"])
+        
+        self.pSet = local_learning_params
+        self.pSet["beta"] = 1.0
+        self.dense = nn.Linear(self.pSet["hidden_size"], 10, bias=False)
+        self.tanh = nn.Tanh()
+
+    def forward(self, x: Tensor) -> Tensor:
+        with torch.no_grad():
+            hidden = self.local_learning(x)
+        return self.tanh(self.pSet["beta"]*self.dense(hidden)) 
+
+
+
 def train_unsupervised(
-    dataloader: DataLoader, model: LocalLearningModel, device: torch.device, no_epochs=5
+    dataloader: DataLoader, model: LocalLearningModel, device: torch.device, no_epochs=5, learning_rate=None
 ) -> None:
+    '''
+    Unsupervised learning routine for a LocalLearningModel on a PyTorch 
+    dataloader
+
+    learning_rate=None - constant learning rate according to tau_l provided in model
+    learning_rate=float - constant learning rate learning_rate
+    learning_rate=function - learning according to the functional relation specified by learning_rate(epoch)
+    '''
+
+    if type(learning_rate).__name__ != 'function':
+        
+        if type(learning_rate).__name__ == 'NoneType':
+            learning_rate = 1.0 / model.pSet["tau_l"]
+        
+        learning_rate  = lambda l: learning_rate
+    
     with torch.no_grad():
-        for epoch in range(no_epochs):
+        for epoch in range(1, no_epochs):
+            model.pSet["tau_l"] = 1.0 / learning_rate(epoch)
             with tqdm(dataloader, unit="batch") as tepoch:
                 tepoch.set_description(f"Epoch: {epoch}")
                 for x, label in tepoch:
                     model.train(x.to(device))
+
 
 
 if __name__ == "__main__":
