@@ -124,7 +124,8 @@ class BioLearningModel(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         with torch.no_grad():
             hidden = self.local_learning(x)
-        return self.tanh(self.pSet["beta"]*self.dense(hidden)) 
+        c = self.tanh(self.pSet["beta"]*self.dense(hidden))
+        return c
 
 
 
