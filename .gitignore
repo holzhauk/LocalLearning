@@ -1,0 +1,9 @@
+# ignore data
+data/**
+
+# ignore logs
+*.log
+
+# ignore compiled code
+src/__pycache__/**
+*.pyc
