@@ -2,7 +2,7 @@ import unittest
 import torch
 from context import LocalLearning
 
-PRECISION = 10**-8
+PRECISION = 10**-6
 
 test_pSet = LocalLearning.LocalLearningModel.pSet
 test_pSet["in_size"] = 2**2
@@ -55,7 +55,7 @@ class TestLocalLearningModel(unittest.TestCase):
                 for i in range(test_pSet["in_size"]):
                     truth[mini_batch_idx, mu] += (
                         llmodel.W[i, mu]
-                        * torch.pow(torch.abs(llmodel.W[i, mu]), test_pSet["p"] - 2)
+                        * torch.pow(torch.abs(llmodel.W[i, mu]), test_pSet["p"] - 2.0)
                         * x_flat[mini_batch_idx, i]
                     )
 
@@ -115,7 +115,7 @@ class TestLocalLearningModel(unittest.TestCase):
                         / test_pSet["tau_l"]
                     )
 
-        llmodel.train(x)
+        llmodel.train_step(x)
         self.assertTrue(torch.norm(llmodel.W - W) < PRECISION)
 
 

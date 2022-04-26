@@ -26,7 +26,7 @@ if __name__ == "__main__":
         "in_size": 28**2,  # MNIST dataset consists of 28x28 pixel imgs
         "hidden_size": 2000,
         "p": 3.0,
-        "tau_l": 1.0 / 0.1,  # 1 / learning rate
+        "tau_l": 1.0 / 0.04,  # 1 / learning rate
         "k": 7,
         "Delta": 0.4,  # inhibition rate
         "R": 1.0,  # asymptotic weight norm radius
@@ -40,9 +40,13 @@ if __name__ == "__main__":
     )
 
     dataloader_train = DataLoader(
-        training_data, batch_size=64, num_workers=2, shuffle=True
+            training_data, batch_size=100, num_workers=4, shuffle=True
     )
-    train_unsupervised(dataloader_train, model, device)
+    train_unsupervised(dataloader_train,
+                        model,
+                        device, 
+                        model_path,
+                        no_epochs=5)
 
     torch.save(
         {
@@ -50,5 +54,5 @@ if __name__ == "__main__":
             "model_parameters": model.param_dict(),
             "device_type": device.type
         },
-        model_path,
+        model_path
     )
