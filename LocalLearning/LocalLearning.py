@@ -11,10 +11,12 @@ from torch import nn
 from torch import Tensor
 from torch.optim import Adam
 
-class LpUnitCIFAR10(datasets.CIFAR10):
 
+class LpUnitCIFAR10(datasets.CIFAR10):
     def __init__(self, root, transform, train=True, p=2.0):
-        super(LpUnitCIFAR10, self).__init__(root=root, transform=transform, train=train, download=True)
+        super(LpUnitCIFAR10, self).__init__(
+            root=root, transform=transform, train=train, download=True
+        )
         self.p = p
 
     def __len__(self):
@@ -27,7 +29,12 @@ class LpUnitCIFAR10(datasets.CIFAR10):
         return feature, label
 
 
-class LocalLearningModel(nn.Module):
+class KHL3(nn.Module):
+    """
+    Krotov and Hopfield's (KH) Local Learning Layer (L3)
+    as first implemented by Konstantin Holzhausen
+    CAREFUL - definition of g does not matches any of the ones mentioned in the paper
+    """
 
     pSet = {
         "in_size": 28 ** 2,
@@ -41,7 +48,7 @@ class LocalLearningModel(nn.Module):
     }
 
     def __init__(self, params: dict):
-        super(LocalLearningModel, self).__init__()
+        super(KHL3, self).__init__()
 
         self.pSet["in_size"] = params["in_size"]
         self.pSet["hidden_size"] = params["hidden_size"]
@@ -51,7 +58,7 @@ class LocalLearningModel(nn.Module):
         self.pSet["k"] = params["k"]
         self.pSet["Delta"] = params["Delta"]
         self.pSet["R"] = params["R"]
-        
+
         self.flatten = nn.Flatten()
         self.flatten.requires_grad_(False)
         #  initialize weights
@@ -67,7 +74,7 @@ class LocalLearningModel(nn.Module):
         eta = torch.abs(self.W)
         return torch.pow(eta, self.pSet["p"] - 2.0)
 
-    def __bracket(self, v: Tensor, M: Tensor) -> Tensor:
+    def _bracket(self, v: Tensor, M: Tensor) -> Tensor:
         res = torch.mul(M, self.__metric_tensor())
         return torch.matmul(v, res)
 
@@ -81,11 +88,11 @@ class LocalLearningModel(nn.Module):
         _, sorted_idxs = q.topk(self.pSet["k"], dim=-1)
         batch_size = g_q.size(dim=0)
         g_q[range(batch_size), sorted_idxs[:, 0]] = 1.0
-        g_q[Tensor(range(batch_size))[..., None], sorted_idxs[:, 1:self.pSet["k"] + 1]] = -self.pSet["Delta"]
+        g_q[range(batch_size), sorted_idxs[:, 1:]] = -self.pSet["Delta"]
         return g_q
-    
+
     def __weight_increment(self, v: Tensor) -> Tensor:
-        h = self.__bracket(v, self.W)
+        h = self._bracket(v, self.W)
         Q = torch.pow(
             self.__matrix_bracket(self.W, self.W),
             (self.pSet["p"] - 1.0) / self.pSet["p"],
@@ -96,10 +103,9 @@ class LocalLearningModel(nn.Module):
         )
         return torch.mul(self.__g(Q)[:, None, ...], inc).sum(dim=0)
 
-
     def forward(self, x):
         x_flat = self.flatten(x)
-        return self.__bracket(x_flat, self.W)
+        return self._bracket(x_flat, self.W)
 
     def param_dict(self) -> dict:
         return self.pSet
@@ -107,7 +113,7 @@ class LocalLearningModel(nn.Module):
     def eval(self) -> None:
         pass
 
-    def train(self, mode: bool=True) -> None:
+    def train(self, mode: bool = True) -> None:
         pass
 
     def train_step(self, x: Tensor) -> None:
@@ -123,17 +129,18 @@ class LocalLearningModel(nn.Module):
             self.W += self.__weight_increment(v) / self.pSet["tau_l"]
 
 
-class FastLocalLearningModel(LocalLearningModel):
+class FKHL3(KHL3):
+    """
+    Fast AI implementation (F) of KHL3
+    """
 
-    # fast AI implementation of the LocalLearningModel
-
-    def __init__(self, params: dict): 
-        super(FastLocalLearningModel, self).__init__(params)
+    def __init__(self, params: dict):
+        super(FKHL3, self).__init__(params)
 
     # redefining the relevant routines to make them fast
     # "fast" means that it allows for parallel mini-batch processing
 
-    def __g(self, q:Tensor) -> Tensor:
+    def __g(self, q: Tensor) -> Tensor:
         g_q = torch.zeros(q.size(), device=self.W.device)
         _, sorted_idxs = q.topk(self.pSet["k"], dim=-1)
         batch_size = g_q.size(dim=0)
@@ -141,14 +148,13 @@ class FastLocalLearningModel(LocalLearningModel):
         g_q[range(batch_size), sorted_idxs[:, -1]] = -self.pSet["Delta"]
         return g_q
 
-
     def __weight_increment(self, v: Tensor) -> Tensor:
-        h = self.__bracket(v, self.W)
+        h = self._bracket(v, self.W)
         g_mu = self.__g(h)
-        inc = self.pSet["R"]**self.pSet["p"]*(v.T@g_mu)
-        return inc - (g_mu*h).sum(dim=0)[None, ...]*self.W
+        inc = self.pSet["R"] ** self.pSet["p"] * (v.T @ g_mu)
+        return inc - (g_mu * h).sum(dim=0)[None, ...] * self.W
 
-    def train_step_fast(self, x:Tensor, prec=1e-30) -> None:
+    def train_step_fast(self, x: Tensor, prec=1e-30) -> None:
         # implementation of the fast unsupervised
         # training algorithm
         # it is fast because it does not require sequential training over
@@ -157,8 +163,7 @@ class FastLocalLearningModel(LocalLearningModel):
         x_flat = self.flatten(x)
         dW = self.__weight_increment(x_flat)
         nc = max(dW.abs().max(), prec)
-        self.W += dW / (nc*self.pSet["tau_l"])
-        
+        self.W += dW / (nc * self.pSet["tau_l"])
 
 
 class BioLearningModel(nn.Module):
@@ -169,16 +174,12 @@ class BioLearningModel(nn.Module):
         super(BioLearningModel, self).__init__()
 
         self.pSet = ll_trained_state["model_parameters"]
-        self.local_learning = LocalLearningModel(
-                self.pSet
-                )
-        self.local_learning.load_state_dict(
-                ll_trained_state["model_state_dict"]
-                )
+        self.local_learning = KHL3(self.pSet)
+        self.local_learning.load_state_dict(ll_trained_state["model_state_dict"])
 
         self.relu = nn.ReLU()
         self.relu.requires_grad_(False)
-        
+
         self.dense = nn.Linear(self.pSet["hidden_size"], 10, bias=False)
 
         self.softmax = nn.Softmax(dim=-1)
@@ -186,14 +187,14 @@ class BioLearningModel(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         h = self.local_learning(x)
         activation = self.relu(h)
-        #activation = torch.pow(self.relu(h), self.pSet["n"])
-        #return self.softmax(self.dense(activation))
+        # activation = torch.pow(self.relu(h), self.pSet["n"])
+        # return self.softmax(self.dense(activation))
         return activation
 
 
 def train_unsupervised(
     dataloader: DataLoader,
-    model: LocalLearningModel,
+    model: KHL3,
     device: torch.device,
     filepath: Path,
     no_epochs=5,
@@ -213,12 +214,11 @@ def train_unsupervised(
 
         if type(learning_rate).__name__ == "NoneType":
             learning_rate = 1.0 / model.pSet["tau_l"]
-        
+
         lr = lambda l: learning_rate
 
     else:
         lr = learning_rate
-
 
     with torch.no_grad():
         for epoch in range(1, no_epochs):

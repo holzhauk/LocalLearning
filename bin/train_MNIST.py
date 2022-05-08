@@ -23,7 +23,7 @@ if __name__ == "__main__":
         os.makedirs(model_path.parent)
 
     model_ps = {
-        "in_size": 28**2,  # MNIST dataset consists of 28x28 pixel imgs
+        "in_size": 28 ** 2,  # MNIST dataset consists of 28x28 pixel imgs
         "hidden_size": 2000,
         "p": 3.0,
         "tau_l": 1.0 / 0.04,  # 1 / learning rate
@@ -40,19 +40,15 @@ if __name__ == "__main__":
     )
 
     dataloader_train = DataLoader(
-            training_data, batch_size=100, num_workers=4, shuffle=True
+        training_data, batch_size=100, num_workers=4, shuffle=True
     )
-    train_unsupervised(dataloader_train,
-                        model,
-                        device, 
-                        model_path,
-                        no_epochs=5)
+    train_unsupervised(dataloader_train, model, device, model_path, no_epochs=5)
 
     torch.save(
         {
             "model_state_dict": model.state_dict(),
             "model_parameters": model.param_dict(),
-            "device_type": device.type
+            "device_type": device.type,
         },
-        model_path
+        model_path,
     )
