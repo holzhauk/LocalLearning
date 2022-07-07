@@ -5,13 +5,13 @@ from tqdm import tqdm
 import numpy as np
 
 # custom modules
-from .LocalLearning import LocalLearningModel
+from .LocalLearning import KHL3
 
 def stringer_spectrum(nu):
     return 1 / nu
 
 def cov_spectrum(
-    dataloader: DataLoader, model: LocalLearningModel, device: torch.device
+        dataloader: DataLoader, model: KHL3, device: torch.device
 ) -> Tensor:
     """
     Calculate the ordered spectrum of the covariance matrix

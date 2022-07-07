@@ -10,7 +10,7 @@ from LocalLearning import train_unsupervised
 if __name__ == "__main__":
 
     if len(sys.argv) != 2:
-        print("usage: python train_CIFAR.py <modelpath>")
+        print("usage: python train_MNIST.py <modelpath>")
         os._exit(os.EX_NOINPUT)
 
     if torch.cuda.is_available():
@@ -23,7 +23,7 @@ if __name__ == "__main__":
         os.makedirs(model_path.parent)
 
     model_ps = {
-            "in_size": 32**2*3,  # CIFAR10 dataset consists of 32x32 pixel imgs with 3 channels each
+        "in_size": 28 ** 2,  # MNIST dataset consists of 28x28 pixel imgs
         "hidden_size": 2000,
         "p": 3.0,
         "tau_l": 1.0 / 0.04,  # 1 / learning rate
@@ -34,15 +34,15 @@ if __name__ == "__main__":
 
     model = LocalLearningModel(model_ps)
     model.to(device=device)
-    
-    training_data = datasets.CIFAR10(
-        root="../data/CIFAR10", train=True, download=True, transform=ToTensor()
+
+    training_data = datasets.MNIST(
+        root="../data/MNIST", train=True, download=True, transform=ToTensor()
     )
 
     dataloader_train = DataLoader(
-        training_data, batch_size=64, num_workers=4, shuffle=True
+        training_data, batch_size=100, num_workers=4, shuffle=True
     )
-    train_unsupervised(dataloader_train, model, device)
+    train_unsupervised(dataloader_train, model, device, model_path, no_epochs=5)
 
     torch.save(
         {
