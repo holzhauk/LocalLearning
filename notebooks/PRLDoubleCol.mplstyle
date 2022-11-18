@@ -4,7 +4,8 @@
 # Konstantin Holzhausen
 #
 
-figure.figsize:		6.75, 7.0	# figure size in inches
+figure.figsize:		6.75, 3.375	# figure size in inches
+figure.dpi:		300
 figure.subplot.wspace:	0.3
 figure.subplot.hspace:	0.3
 
@@ -19,17 +20,21 @@ legend.fontsize:	10
 legend.frameon:		False
 
 axes.labelsize:		10
+axes.labelpad:		3.0
 axes.titlesize:		10
 axes.labelweight:	normal
 axes.spines.top:	False
 axes.spines.right:	False
 
 lines.linewidth:	1.0
+lines.markersize:	3.5
 lines.markeredgewidth:	0.5
 lines.markeredgecolor:	black
 
 xtick.labelsize:	8
+xtick.major.pad:	1.5
 ytick.labelsize:	8
+ytick.major.pad:	1.5
 
 savefig.format:		pdf
 

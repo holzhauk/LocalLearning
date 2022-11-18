@@ -13,20 +13,78 @@ from torch.optim import Adam
 
 
 class LpUnitCIFAR10(datasets.CIFAR10):
-    def __init__(self, root, transform, train=True, p=2.0):
+    def __init__(self, root, transform, train=True, device=torch.device('cpu'), p=2.0, **kwargs):
         super(LpUnitCIFAR10, self).__init__(
-            root=root, transform=transform, train=train, download=True
+            root=root, transform=transform, train=train, download=True, **kwargs,
         )
         self.p = p
+        self.flat = nn.Flatten()
+        self.device = device
+        self.data = torch.tensor(self.data.astype('float32'))
+        #self.data = self.data.to(self.device)
+        self.data /= torch.norm(self.flat(self.data), p=self.p, dim=-1)[:, None, None, None]
+        self.data = self.data.detach().cpu().numpy()
 
     def __len__(self):
-        return super(LpUnitCIFAR10, self).__len__()
+        return len(self.data)
 
     def __getitem__(self, index):
-        feature, label = super(LpUnitCIFAR10, self).__getitem__(index)
-        # normalize image to a Lp unit vector
-        feature /= torch.norm(feature, p=self.p)
-        return feature, label
+        # Args:  index (int): index of the data set
+        # Value: feature, target (tuple): feature-target pair 
+        #                                 with respective index in the dataset
+        return self.data[index], self.targets[index]
+
+
+class MikkelCIFAR10(datasets.CIFAR10):
+    def __init__(self, root, transform, train=True, **kwargs):
+        super(MikkelCIFAR10, self).__init__(
+                    root=root,
+                    train=train,
+                    transform=transform,
+                    download=True,
+                    **kwargs,
+                )
+        self.data = torch.tensor(self.data.astype('float32') / 255.)
+        self.data = self.data.detach().cpu().numpy()
+        
+    def __getitem__(self, index):
+        feature = self.data[index]
+        target = self.targets[index]
+        return feature, target
+
+
+
+class DeviceDataLoader(DataLoader):
+    # DataLoader class that operates on datasets entirely moved 
+    # to a specific device
+    # Should only be used with datasets that are small enough to be stored
+    # on the respective device.
+    # Speeds up operation by a lot, because data does not has to be moved
+    # between devices during training or inference.
+
+    def __init__(
+            self,
+            dataset,
+            device=None,
+            batch_size=100,
+            num_workers=0,
+            **kwargs,
+            ):
+        if type(device) == type(None):
+            raise ValueError("device=None -- Please specify the device to compute on (CPU/GPU)")
+
+        if device != torch.device('cpu'):
+            num_workers = 0
+
+        # initialize DataLoader with dataset and parameters
+        super(DeviceDataLoader, self).__init__(dataset, batch_size=batch_size,num_workers=num_workers,**kwargs)
+
+        # move the data to the specified device
+        if type(self.dataset.data) != torch.Tensor:
+            self.dataset.data = torch.tensor(self.dataset.data)
+        
+        if self.dataset.data.device != device:
+            self.dataset.data = self.dataset.data.to(device)
 
 
 class KHL3(nn.Module):
@@ -41,13 +99,13 @@ class KHL3(nn.Module):
         "hidden_size": 2000,
         "n": 4.5,
         "p": 3,
-        "tau_l": 10.0,
+        "tau_l": 1 / 0.04,
         "k": 7,
         "Delta": 0.4,
         "R": 1.0,
     }
 
-    def __init__(self, params: dict):
+    def __init__(self, params: dict, sigma=None):
         super(KHL3, self).__init__()
 
         self.pSet["in_size"] = params["in_size"]
@@ -67,8 +125,12 @@ class KHL3(nn.Module):
             requires_grad=False,
         )
         # self.W = nn.Parameter(self.W) # W is a model parameter
-        std = 1.0 / math.sqrt(self.pSet["in_size"] + self.pSet["hidden_size"])
-        self.W.normal_(mean=0.0, std=std)
+        if type(sigma) == type(None):
+            # if sigma is not explicitely specified, use Glorot
+            # initialisation scheme
+            sigma = 1.0 / math.sqrt(self.pSet["in_size"] + self.pSet["hidden_size"])
+            
+        self.W.normal_(mean=0.0, std=sigma)
 
     def __metric_tensor(self):
         eta = torch.abs(self.W)
@@ -134,8 +196,8 @@ class FKHL3(KHL3):
     Fast AI implementation (F) of KHL3
     """
 
-    def __init__(self, params: dict):
-        super(FKHL3, self).__init__(params)
+    def __init__(self, params: dict, sigma=None):
+        super(FKHL3, self).__init__(params, sigma)
 
     # redefining the relevant routines to make them fast
     # "fast" means that it allows for parallel mini-batch processing
@@ -154,7 +216,7 @@ class FKHL3(KHL3):
         inc = self.pSet["R"] ** self.pSet["p"] * (v.T @ g_mu)
         return inc - (g_mu * h).sum(dim=0)[None, ...] * self.W
 
-    def train_step_fast(self, x: Tensor, prec=1e-30) -> None:
+    def train_step(self, x: Tensor, prec=1e-9) -> None:
         # implementation of the fast unsupervised
         # training algorithm
         # it is fast because it does not require sequential training over
@@ -174,22 +236,24 @@ class BioLearningModel(nn.Module):
         super(BioLearningModel, self).__init__()
 
         self.pSet = ll_trained_state["model_parameters"]
-        self.local_learning = KHL3(self.pSet)
+        self.local_learning = FKHL3(self.pSet)
         self.local_learning.load_state_dict(ll_trained_state["model_state_dict"])
+        self.local_learning.requires_grad_(False)
 
-        self.relu = nn.ReLU()
-        self.relu.requires_grad_(False)
+        self.relu_h = nn.ReLU()
+        self.relu_h.requires_grad_(False)
 
         self.dense = nn.Linear(self.pSet["hidden_size"], 10, bias=False)
+        self.dense.requires_grad_(True)
 
+        self.relu_f = nn.ReLU()
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x: Tensor) -> Tensor:
         h = self.local_learning(x)
-        activation = self.relu(h)
-        # activation = torch.pow(self.relu(h), self.pSet["n"])
-        # return self.softmax(self.dense(activation))
-        return activation
+        latent_activation = torch.pow(self.relu_h(h), self.pSet["n"])
+        activation = self.dense(latent_activation)
+        return self.softmax(self.relu_f(activation))
 
 
 def train_unsupervised(
@@ -221,25 +285,30 @@ def train_unsupervised(
         lr = learning_rate
 
     with torch.no_grad():
-        for epoch in range(1, no_epochs):
-            model.pSet["tau_l"] = 1.0 / lr(epoch)
-            with tqdm(dataloader, unit="batch") as tepoch:
-                tepoch.set_description(f"Epoch: {epoch}")
-                for x, label in tepoch:
-                    model.train_step(x.to(device))
+        with tqdm(range(1, no_epochs + 1), unit="epoch") as tepoch:
+            #tepoch.set_description(f"Epoch: {epoch}")
+            tepoch.set_description(f"Training time [epochs]")
 
-            if epoch % checkpt_period == 0:
-                torch.save(
-                    {
-                        "model_parameters": model.param_dict(),
-                        "model_state_dict": model.state_dict(),
-                        "device_type": device.type,
-                    },
-                    filepath.parent
-                    / Path(
-                        str(filepath.stem) + "_" + str(epoch) + str(filepath.suffix)
-                    ),
-                )
+            for epoch in tepoch:
+                # catch lr(epoch) = 0 to avoid division by 0
+                if lr(epoch) != 0.0:
+                    # if learning rate == 0 -> no learning
+                    model.pSet["tau_l"] = 1.0 / lr(epoch)
+                    for batch_num, (features, labels) in enumerate(dataloader):
+                        model.train_step(features.to(device))
+
+                if epoch % checkpt_period == 0:
+                    torch.save(
+                        {
+                            "model_parameters": model.param_dict(),
+                            "model_state_dict": model.state_dict(),
+                            "device_type": device.type,
+                        },
+                        filepath.parent
+                        / Path(
+                            str(filepath.stem) + "_" + str(epoch) + str(filepath.suffix)
+                        ),
+                    )
 
 
 def train_half_backprop(
