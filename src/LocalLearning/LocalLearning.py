@@ -82,9 +82,11 @@ class DeviceDataLoader(DataLoader):
         # move the data to the specified device
         if type(self.dataset.data) != torch.Tensor:
             self.dataset.data = torch.tensor(self.dataset.data)
+            self.dataset.targets = torch.tensor(self.dataset.targets)
         
         if self.dataset.data.device != device:
             self.dataset.data = self.dataset.data.to(device)
+            self.dataset.targets = self.dataset.targets.to(device)
 
 
 class KHL3(nn.Module):
@@ -228,12 +230,25 @@ class FKHL3(KHL3):
         self.W += dW / (nc * self.pSet["tau_l"])
 
 
-class BioLearningModel(nn.Module):
+class KHModel(nn.Module):
+    """
+    Model similar to that propsed by Krotov and Hopfield (KH)
+    Architectural structure:
+         FKHL3 (Fast Local Learning Layer)
+           |
+         PReLu (Polynomial ReLu)
+           |
+         Linear
+           |
+          ReLu
+           |
+        Softmax
+    """
 
     pSet = {}
 
     def __init__(self, ll_trained_state: dict):
-        super(BioLearningModel, self).__init__()
+        super(KHModel, self).__init__()
 
         self.pSet = ll_trained_state["model_parameters"]
         self.local_learning = FKHL3(self.pSet)
@@ -245,15 +260,14 @@ class BioLearningModel(nn.Module):
 
         self.dense = nn.Linear(self.pSet["hidden_size"], 10, bias=False)
         self.dense.requires_grad_(True)
-
-        self.relu_f = nn.ReLU()
+        
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x: Tensor) -> Tensor:
         h = self.local_learning(x)
         latent_activation = torch.pow(self.relu_h(h), self.pSet["n"])
-        activation = self.dense(latent_activation)
-        return self.softmax(self.relu_f(activation))
+        classification = self.dense(latent_activation)
+        return self.softmax(classification)
 
 
 def train_unsupervised(
@@ -313,7 +327,7 @@ def train_unsupervised(
 
 def train_half_backprop(
     dataloader: DataLoader,
-    model: BioLearningModel,
+    model: KHModel,
     device: torch.device,
     filepath: Path,
     no_epochs=5,
