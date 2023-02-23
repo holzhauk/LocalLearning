@@ -269,6 +269,44 @@ class KHModel(nn.Module):
         classification = self.dense(latent_activation)
         return self.softmax(classification)
 
+class KHModel_dense(nn.Module):
+    """
+    Model similar to that propsed by Krotov and Hopfield (KH)
+    Architectural structure:
+         FKHL3 (Fast Local Learning Layer)
+           |
+         PReLu (Polynomial ReLu)
+           |
+         Linear
+           |
+          ReLu
+           |
+        Softmax
+    """
+
+    pSet = {}
+
+    def __init__(self, ll_trained_state: dict):
+        super(KHModel, self).__init__()
+
+        self.pSet = ll_trained_state["model_parameters"]
+        self.local_learning = FKHL3(self.pSet)
+        self.local_learning.load_state_dict(ll_trained_state["model_state_dict"])
+        self.local_learning.requires_grad_(False)
+
+        self.relu_h = nn.ReLU()
+        self.relu_h.requires_grad_(False)
+
+        self.dense = nn.Linear(self.pSet["hidden_size"], 10, bias=False)
+        self.dense.requires_grad_(True)
+        
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x: Tensor) -> Tensor:
+        h = self.dense(x)
+        latent_activation = torch.pow(self.relu_h(h), self.pSet["n"])
+        classification = self.dense(latent_activation)
+        return self.softmax(classification)
 
 def train_unsupervised(
     dataloader: DataLoader,
