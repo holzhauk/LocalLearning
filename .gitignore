@@ -1,5 +1,9 @@
 # ignore data
 data/**
+*.pth
+
+# ignore figures
+*.pdf
 
 # ignore logs
 *.log

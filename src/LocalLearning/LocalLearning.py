@@ -11,6 +11,52 @@ from torch import nn
 from torch import Tensor
 from torch.optim import Adam
 
+class GaussianCIFAR10(datasets.CIFAR10):
+    def __init__(
+        self, 
+        params: dict,
+        train: bool=True,
+        **kwargs,
+    ):
+        # params = {
+        #   "mu": 0.0,
+        #   "sigma": 1.0,
+        # }
+        self.mu = params["mu"]
+        self.sigma = params["sigma"]
+        
+        # dimensions of the CIFAR10 dataset
+        # 60 000 samples in total
+        self.img_width_px = 32
+        self.img_height_px = 32
+        self.img_ch_num = 3
+        
+        if train:
+            self.len = 50000
+            
+        else:
+            self.len = 10000
+            
+        #self.data = torch.rand(
+        #    (self.len, self.img_width_px, self.img_height_px, self.img_ch_num, ),
+        #)
+        #self.data = self.data.normal_(mean=self.mu, std=self.sigma)
+        
+        #self.targets = torch.zeros((self.len, 1, ))
+        
+    def __len__(self):
+        return self.len
+    
+    def __getitem__(self, index):
+        
+        img_gauss = torch.rand(
+            (self.img_width_px, self.img_height_px, self.img_ch_num, ),
+        )
+        img_gauss = img_gauss.normal_(mean=self.mu, std=self.sigma)
+        
+        dummy_target = torch.Tensor([0.0])
+        #return self.data[index], self.targets[index]
+        return img_gauss, dummy_target
 
 class LpUnitCIFAR10(datasets.CIFAR10):
     def __init__(self, root, transform, train=True, device=torch.device('cpu'), p=2.0, **kwargs):
@@ -268,6 +314,16 @@ class KHModel(nn.Module):
         latent_activation = torch.pow(self.relu_h(h), self.pSet["n"])
         classification = self.dense(latent_activation)
         return self.softmax(classification)
+
+
+class IdentityModel(nn.Module):
+    
+    def __init__(self, **kwargs):
+        super(IdentityModel, self).__init__()
+        self.flatten = nn.Flatten()
+        
+    def forward(self, x):
+        return self.flatten(x)
 
 
 def train_unsupervised(

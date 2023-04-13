@@ -29,7 +29,7 @@ axes.spines.right:	False
 lines.linewidth:	1.0
 lines.markersize:	3.5
 lines.markeredgewidth:	0.5
-lines.markeredgecolor:	black
+lines.markeredgecolor:	none
 
 xtick.labelsize:	8
 xtick.major.pad:	1.5
