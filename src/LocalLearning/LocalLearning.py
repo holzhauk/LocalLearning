@@ -305,15 +305,12 @@ class KHModel(nn.Module):
         self.relu_h.requires_grad_(False)
 
         self.dense = nn.Linear(self.pSet["hidden_size"], 10, bias=False)
-        self.dense.requires_grad_(True)
-        
-        self.softmax = nn.Softmax(dim=-1)
+        self.dense.requires_grad_(True) 
 
     def forward(self, x: Tensor) -> Tensor:
         h = self.local_learning(x)
         latent_activation = torch.pow(self.relu_h(h), self.pSet["n"])
-        classification = self.dense(latent_activation)
-        return self.softmax(classification)
+        return self.dense(latent_activation)
 
 
 class IdentityModel(nn.Module):
