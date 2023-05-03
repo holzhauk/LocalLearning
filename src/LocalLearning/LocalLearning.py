@@ -276,7 +276,17 @@ class FKHL3(KHL3):
         self.W += dW / (nc * self.pSet["tau_l"])
 
 
-class KHModel(nn.Module):
+class HiddenLayerModel(nn.Module):
+    
+    pSet = {
+        "hidden": 2000,
+    }
+    
+    def hidden(x: torch.Tensor):
+        pass
+
+
+class KHModel(HiddenLayerModel):
     """
     Model similar to that propsed by Krotov and Hopfield (KH)
     Architectural structure:
@@ -305,12 +315,65 @@ class KHModel(nn.Module):
         self.relu_h.requires_grad_(False)
 
         self.dense = nn.Linear(self.pSet["hidden_size"], 10, bias=False)
-        self.dense.requires_grad_(True) 
+        self.dense.requires_grad_(True)
+
+    def hidden(x: torch.Tensor) -> Tensor:
+        return self.local_learning(x)
 
     def forward(self, x: Tensor) -> Tensor:
-        h = self.local_learning(x)
+        h = self.hidden(x)
         latent_activation = torch.pow(self.relu_h(h), self.pSet["n"])
         return self.dense(latent_activation)
+
+
+class SpecRegModel(HiddenLayerModel):
+    
+    # default parameters
+    pSet = {
+        "in_size": 32*32*3,
+        "hidden_size": 2000,
+        "p": 4.5,
+        "no_classes": 10,
+        "tau": 10, # regularizing cutoff
+    }
+    
+    def __init__(self, params: dict=None, sigma: float=None, dtype: torch.dtype=torch.float32, **kwargs):
+        super(SpecRegModel, self).__init__()
+        if type(params) != type(None):
+            self.pSet["in_size"] = params["in_size"]
+            self.pSet["hidden_size"] = params["hidden_size"]
+            self.pSet["p"] = params["p"]
+            self.pSet["no_classes"] = params["no_classes"]
+            self.pSet["tau"] = params["tau"]
+            
+        self.dtype = dtype
+        self.flatten = nn.Flatten()
+        
+        # define linear mapping between input and hidden layer
+        # creating the representations
+        # same fashion as in KHL3 for optimal control
+        self.W = torch.zeros((self.pSet["in_size"], self.pSet["hidden_size"]), dtype=self.dtype)
+
+        # if sigma not explicitely specified, use Glorot initialisation
+        # scheme
+        if type(sigma) == type(None):
+            sigma = 1.0 / math.sqrt(self.pSet["in_size"] + self.pSet["hidden_size"])
+        
+        self.W.normal_(mean=0.0, std=sigma)
+        self.W = nn.Parameter(self.W)
+        
+        self.ReLU = nn.ReLU()
+        # define second mapping
+        self.dense = nn.Linear(self.pSet["hidden_size"], self.pSet["no_classes"], bias=False)
+        
+    def hidden(self, x: torch.Tensor):
+        x_flat = self.flatten(x)
+        return x_flat @ self.W
+        
+    def forward(self, x: torch.Tensor):
+        hidden = self.hidden(x)
+        latent_activation = torch.pow(self.ReLU(hidden), self.pSet["p"])
+        return self.dense(latent_activation), hidden
 
 
 class IdentityModel(nn.Module):
