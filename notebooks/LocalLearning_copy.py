@@ -302,7 +302,7 @@ class KHModel_bp(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x: Tensor) -> Tensor:
-        h = self.first_dense(x.view(1000,-1))
+        h = self.first_dense(x.view(x.shape[0],-1))
         latent_activation = torch.pow(self.relu_h(h), self.pSet["n"])
         classification = self.dense(latent_activation)
         return self.softmax(classification)

@@ -3,6 +3,11 @@ import torch
 from pathlib import Path
 import LocalLearning_copy as LocalLearning
 
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+
 
 def load_trained_model_bp(idx):
     trained_model_bp_path = Path("../data/models/KHModelCIFAR10_ensemble/bp")
