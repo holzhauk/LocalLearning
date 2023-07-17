@@ -11,7 +11,7 @@ from torch import nn
 from torch import Tensor
 from torch.optim import Adam
 
-class GaussianCIFAR10(datasets.CIFAR10):
+class GaussianData(Dataset):
     def __init__(
         self, 
         params: dict,
@@ -19,17 +19,22 @@ class GaussianCIFAR10(datasets.CIFAR10):
         **kwargs,
     ):
         # params = {
+        #   // Parameters of the Gaussian Process
         #   "mu": 0.0,
         #   "sigma": 1.0,
+        #   // Image Extensions
+        #   "img_width_px": 32,
+        #   "img_height_px": 32,
+        #   "img_ch_num": 3,
         # }
         self.mu = params["mu"]
         self.sigma = params["sigma"]
         
         # dimensions of the CIFAR10 dataset
         # 60 000 samples in total
-        self.img_width_px = 32
-        self.img_height_px = 32
-        self.img_ch_num = 3
+        self.img_width_px = params["img_width_px"]
+        self.img_height_px = params["img_height_px"]
+        self.img_ch_num = params["img_ch_num"]
         
         if train:
             self.len = 50000
@@ -58,6 +63,7 @@ class GaussianCIFAR10(datasets.CIFAR10):
         #return self.data[index], self.targets[index]
         return img_gauss, dummy_target
 
+
 class LpUnitCIFAR10(datasets.CIFAR10):
     def __init__(self, root, transform, train=True, device=torch.device('cpu'), p=2.0, **kwargs):
         super(LpUnitCIFAR10, self).__init__(
@@ -81,24 +87,27 @@ class LpUnitCIFAR10(datasets.CIFAR10):
         return self.data[index], self.targets[index]
 
 
-class MikkelCIFAR10(datasets.CIFAR10):
-    def __init__(self, root, transform, train=True, **kwargs):
-        super(MikkelCIFAR10, self).__init__(
-                    root=root,
-                    train=train,
-                    transform=transform,
-                    download=True,
-                    **kwargs,
-                )
-        self.data = torch.tensor(self.data.astype('float32') / 255.)
+class LpUnitMNIST(datasets.MNIST):
+    def __init__(self, root, train=True, device=torch.device('cpu'), p=2.0, **kwargs):
+        super(LpUnitMNIST, self).__init__(
+            root=root, transform=ToTensor(), train=train, download=True, **kwargs,
+        )
+        self.p = p
+        self.flat = nn.Flatten()
+        self.device = device
+        self.data = self.data.type(torch.float32)
+        #self.data = self.data.to(self.device)
+        self.data /= torch.norm(self.flat(self.data), p=self.p, dim=-1)[:, None, None]
         self.data = self.data.detach().cpu().numpy()
-        
+
+    def __len__(self):
+        return len(self.data)
+
     def __getitem__(self, index):
-        feature = self.data[index]
-        target = self.targets[index]
-        return feature, target
-
-
+        # Args:  index (int): index of the data set
+        # Value: feature, target (tuple): feature-target pair 
+        #                                 with respective index in the dataset
+        return self.data[index], self.targets[index]
 
 class DeviceDataLoader(DataLoader):
     # DataLoader class that operates on datasets entirely moved 
@@ -282,7 +291,16 @@ class HiddenLayerModel(nn.Module):
         "hidden": 2000,
     }
     
-    def hidden(x: torch.Tensor):
+    def __init__(self):
+        super(HiddenLayerModel, self).__init__()
+
+    def hidden(self, x: torch.Tensor):
+        pass
+
+    def save(self, filepath: Path):
+        pass
+
+    def load(self, filepath: Path):
         pass
 
 
@@ -294,11 +312,7 @@ class KHModel(HiddenLayerModel):
            |
          PReLu (Polynomial ReLu)
            |
-         Linear
-           |
-          ReLu
-           |
-        Softmax
+         Dense (Linear)
     """
 
     pSet = {}
@@ -314,10 +328,12 @@ class KHModel(HiddenLayerModel):
         self.relu_h = nn.ReLU()
         self.relu_h.requires_grad_(False)
 
-        self.dense = nn.Linear(self.pSet["hidden_size"], 10, bias=False)
+        self.dense = nn.Linear(self.pSet["hidden_size"], 10)
         self.dense.requires_grad_(True)
 
-    def hidden(x: torch.Tensor) -> Tensor:
+        self.softMax = nn.Softmax(dim=-1)
+
+    def hidden(self, x: torch.Tensor) -> Tensor:
         return self.local_learning(x)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -326,25 +342,24 @@ class KHModel(HiddenLayerModel):
         return self.dense(latent_activation)
 
 
-class SpecRegModel(HiddenLayerModel):
+class SHLP(HiddenLayerModel):
+    # single hidden layer perceptron model
     
     # default parameters
     pSet = {
         "in_size": 32*32*3,
         "hidden_size": 2000,
-        "p": 4.5,
+        "n": 4.5,
         "no_classes": 10,
-        "tau": 10, # regularizing cutoff
     }
     
     def __init__(self, params: dict=None, sigma: float=None, dtype: torch.dtype=torch.float32, **kwargs):
-        super(SpecRegModel, self).__init__()
+        super(SHLP, self).__init__()
         if type(params) != type(None):
             self.pSet["in_size"] = params["in_size"]
             self.pSet["hidden_size"] = params["hidden_size"]
-            self.pSet["p"] = params["p"]
+            self.pSet["n"] = params["n"]
             self.pSet["no_classes"] = params["no_classes"]
-            self.pSet["tau"] = params["tau"]
             
         self.dtype = dtype
         self.flatten = nn.Flatten()
@@ -354,17 +369,18 @@ class SpecRegModel(HiddenLayerModel):
         # same fashion as in KHL3 for optimal control
         self.W = torch.zeros((self.pSet["in_size"], self.pSet["hidden_size"]), dtype=self.dtype)
 
-        # if sigma not explicitely specified, use Glorot initialisation
-        # scheme
+        # if sigma not explicitely specified, use Keiming He initialisation scheme
+        # from: He et al. (2015) "Delving Deep into Rectifiers: 
+        # Surpassing Human-Level Performance on ImageNet Classification"
         if type(sigma) == type(None):
-            sigma = 1.0 / math.sqrt(self.pSet["in_size"] + self.pSet["hidden_size"])
-        
+            sigma = math.sqrt(2 / self.pSet["in_size"])
+
         self.W.normal_(mean=0.0, std=sigma)
         self.W = nn.Parameter(self.W)
         
         self.ReLU = nn.ReLU()
         # define second mapping
-        self.dense = nn.Linear(self.pSet["hidden_size"], self.pSet["no_classes"], bias=False)
+        self.dense = nn.Linear(self.pSet["hidden_size"], self.pSet["no_classes"])
         
     def hidden(self, x: torch.Tensor):
         x_flat = self.flatten(x)
@@ -372,14 +388,36 @@ class SpecRegModel(HiddenLayerModel):
         
     def forward(self, x: torch.Tensor):
         hidden = self.hidden(x)
-        latent_activation = torch.pow(self.ReLU(hidden), self.pSet["p"])
+        latent_activation = torch.pow(self.ReLU(hidden), self.pSet["n"])
         return self.dense(latent_activation), hidden
 
 
+class SpecRegModel(SHLP):
+
+    # default parameters
+    pSet = {
+        "in_size": 32*32*3,
+        "hidden_size": 2000,
+        "n": 4.5,
+        "no_classes": 10,
+        "nu": 10, # regularizing cutoff
+    }
+
+    def __init__(params: dict=None, sigma: float=None, dtype: torch.dtype=torch.float32, **kwargs):
+        super(SpecRegModel, self).__init__(params=params, sigma=sigma, dtype=dtype, **kwargs)
+        if type(params) != type(None):
+            self.pSet["nu"] = params["nu"]
+
+
 class IdentityModel(nn.Module):
+
+    pSet = {
+        "hidden_size": 2000,
+    }
     
-    def __init__(self, **kwargs):
+    def __init__(self, params: dict, **kwargs):
         super(IdentityModel, self).__init__()
+        self.pSet["hidden_size"] = params["in_size"]
         self.flatten = nn.Flatten()
         
     def forward(self, x):
