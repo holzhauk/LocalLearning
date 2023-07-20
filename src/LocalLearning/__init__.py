@@ -17,3 +17,9 @@ from .LocalLearning import DeviceDataLoader
 from .Statistics import cov_spectrum
 from .Statistics import stringer_spectrum
 from .LocalLearning import train_unsupervised
+
+# Trainers
+from . import Trainers
+
+#Regularizers
+from . import Regularizers

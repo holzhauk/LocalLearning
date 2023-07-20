@@ -61,7 +61,7 @@ class Trainer(ABC):
         pass
 
     @abstractmethod
-    def _epoch_loss(
+    def _batch_loss(
             self,
             features: torch.Tensor,
             labels: torch.Tensor,
@@ -71,7 +71,7 @@ class Trainer(ABC):
         pass
 
     @abstractmethod
-    def _epoch_eval(
+    def _batch_eval(
             self,
             features: torch.Tensor,
             labels: torch.Tensor,
@@ -134,56 +134,44 @@ class CETrainer(Trainer):
                 self.model.to(self.device)
                 self.model.train()
                 cumm_loss = 0.0    
-                #cumm_jr_loss = 0.0
                 for batch_nr, (features, labels) in enumerate(trainData):
 
                     # batch preprocessing
                     features, labels = self._batch_preprocessing(features, labels)
-                    #features.requires_grad_()
                     
                     # batch optimization
                     optimizer.zero_grad()
-                    #JR_loss = self.JacReg(hidden_state, features)
-                    #loss = ce_loss + self.sPs["lambda_JR"]*JR_loss
                     outputs, hidden_repr = self.model(features)
-                    loss = self._epoch_loss(features, labels, outputs, hidden_repr)
+                    loss = self._batch_loss(features, labels, outputs, hidden_repr)
                     cumm_loss += float(loss)
 
                     loss.backward()
                     optimizer.step()
                     # gradient clipping
                     #torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, model.pSet["p"])
-                    #cumm_jr_loss += float(JR_loss)
                     
                     # batch post-processing
-                    #features.to('cpu', non_blocking=True)
-                    #labels.to('cpu', non_blocking=True)
+                    self._batch_postprocessing(features, labels)
                 
                 # epoch postprocessing
                 self.log["epoch"].append(epoch)
                 self.log["loss"].append(cumm_loss)
                 self._epoch_postprocessing_train()
-                #self.jf_history.append(cumm_jr_loss)
                 
                 if testData is not None:
                     self._epoch_preprocessing_eval()
                     self.model.eval()
                     eval_freq = 0.0 # evaluation frequency
-                    #jf_score = 0.0
                     for batch_no, (features, labels) in enumerate(testData):
                         # batch preprocessing
                         features, labels = self._batch_preprocessing(features, labels)
-                        #features.requires_grad_()
                         
                         # batch evaluation
                         outputs, hidden_repr = self.model(features)
-                        eval_freq += self._epoch_eval(features, labels, outputs, hidden_repr)
-                        #Jf = self.JacReg(hidden_state, features)
-                        #jf_score += float(Jf)
+                        eval_freq += self._batch_eval(features, labels, outputs, hidden_repr)
                     
                     self.log["eval_acc"].append(eval_freq / (len(testData)*testData.batch_size))
                     self._epoch_postprocessing_eval()
-                    #self.jf_score_eval.append(jf_score)
 
     def _epoch_preprocessing_train(
             self,
@@ -215,7 +203,16 @@ class CETrainer(Trainer):
         labels = labels.to(self.device)
         return (features, labels)
 
-    def _epoch_loss(
+    def _batch_postprocessing(
+            self,
+            features: torch.Tensor,
+            labels: torch.Tensor
+            ) -> None:
+        
+        features.to('cpu', non_blocking=True)
+        labels.to('cpu', non_blocking=True)
+
+    def _batch_loss(
             self,
             features: torch.Tensor,
             labels: torch.Tensor,
@@ -227,7 +224,7 @@ class CETrainer(Trainer):
         self.cumm_ce_loss += float(ce_loss)
         return ce_loss
 
-    def _epoch_eval(
+    def _batch_eval(
             self,
             features: torch.Tensor,
             labels: torch.Tensor,
