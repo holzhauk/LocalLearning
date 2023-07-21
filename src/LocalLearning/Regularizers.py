@@ -193,7 +193,7 @@ class JFReg(Regularizer):
 
     def __init__(self, alpha_JF=0.0, n=1):
         super(JFReg, self).__init__(alpha_reg=alpha_JF)
-        no_projections = n
+        JFReg.no_projections = n
         assert (no_projections == -1) or (no_projections > 0)
         
         if no_projections == -1:
@@ -317,8 +317,8 @@ class SpecReg(Regularizer):
 
     def __init__(self, alpha_SR=0.0, alpha=1.0, tau=1):
         super(SpecReg, self).__init__(alpha_reg=alpha_SR)        
-        alpha = alpha
-        tau = tau
+        SpecReg.alpha = alpha
+        SpecReg.tau = tau
 
     @classmethod
     def _rxx_mean(
@@ -480,4 +480,76 @@ class SpecReg(Regularizer):
     @classmethod
     def _epoch_postprocessing_eval(cls, obj_ref) -> None:
         obj_ref.log["eval_SpecReg_score"].append(obj_ref.eval_spec_score)
+
+
+class LpReg(Regularizer):
+    '''
+    Lp-Norm Regularisation
+    '''
+    p = 1   # power of the norm
+
+    def __init__(self, alpha_Lp=0.0, p=1):
+        super(LpReg, self).__init__(alpha_reg=alpha_Lp)
+        assert p > 0
+        LpReg.p = p
+    
+    @classmethod
+    def _Lp_loss(cls, model: torch.nn.Module) -> Tensor:
+        Lp_loss = 0.0
+        for P in model.parameters():
+            Lp_loss += torch.norm(P, p=cls.p)**cls.p
+        return Lp_loss
+
+      
+    @classmethod
+    def reg(
+        cls,
+        obj_ref,
+        features: torch.Tensor,
+        labels: torch.Tensor,
+        outputs: torch.Tensor,
+        hidden_repr: torch.Tensor,
+        ) -> torch.Tensor:
+        
+        Lp_loss = cls._Lp_loss(obj_ref.model)
+        obj_ref.cumm_Lp_loss += float(Lp_loss)
+        return Lp_loss
+
+    @classmethod
+    def _batch_preprocessing(
+            cls,
+            obj_ref,
+            features: torch.Tensor,
+            labels: torch.Tensor,
+            ) -> tuple:
+        features.requires_grad_()
+        return (features, labels)
+
+    @classmethod
+    def _epoch_preprocessing_train(cls, obj_ref) -> None:
+        obj_ref.cumm_Lp_loss = 0.0
+
+    @classmethod
+    def _epoch_postprocessing_train(cls, obj_ref) -> None:
+        obj_ref.log["LpReg_loss"].append(obj_ref.cumm_Lp_loss)
+
+    @classmethod
+    def reg_eval(
+            cls,
+            obj_ref,
+            features: torch.Tensor,
+            labels: torch.Tensor,
+            predictions: torch.Tensor,
+            hidden_repr: torch.Tensor,
+            ) -> None:
+        Lp_loss = cls._Lp_loss(obj_ref.model)
+        obj_ref.eval_LpReg_score += float(Lp_loss)
+     
+    @classmethod
+    def _epoch_preprocessing_eval(cls, obj_ref) -> None:
+        obj_ref.eval_LpReg_score = 0.0
+
+    @classmethod
+    def _epoch_postprocessing_eval(cls, obj_ref) -> None:
+        obj_ref.log["eval_LpReg_score"].append(obj_ref.eval_LpReg_score)
 
