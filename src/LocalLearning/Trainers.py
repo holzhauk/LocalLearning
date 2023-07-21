@@ -19,6 +19,7 @@ class Trainer(ABC):
             model: nn.Module,
             ):
         super(Trainer, self).__init__()
+        self.model = model
 
     @abstractmethod
     def run(
@@ -97,8 +98,7 @@ class CETrainer(Trainer):
                  learning_rate: float=1e-4,
                  dtype: torch.dtype=torch.float32,
                 ):
-        
-        self.model = model
+        super(CETrainer, self).__init__(model)
         #self.no_epochs = no_epochs
         #self.sPs = spectral_ps
         self.device = device
@@ -120,6 +120,9 @@ class CETrainer(Trainer):
             testData: DataLoader=None,
             no_epochs: int=5,
                 ):
+        # make dataloader accessible for decorators as well
+        self.trainData = trainData
+        self.testData = testData
         optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
     
         with tqdm(range(1, no_epochs + 1), unit="epoch") as tepoch:
@@ -133,8 +136,9 @@ class CETrainer(Trainer):
                 self._epoch_preprocessing_train()
                 self.model.to(self.device)
                 self.model.train()
-                cumm_loss = 0.0    
-                for batch_nr, (features, labels) in enumerate(trainData):
+                cumm_loss = 0.0   
+
+                for batch_nr, (features, labels) in enumerate(self.trainData):
 
                     # batch preprocessing
                     features, labels = self._batch_preprocessing(features, labels)
@@ -152,7 +156,7 @@ class CETrainer(Trainer):
                     
                     # batch post-processing
                     self._batch_postprocessing(features, labels)
-                
+                 
                 # epoch postprocessing
                 self.log["epoch"].append(epoch)
                 self.log["loss"].append(cumm_loss)
@@ -162,13 +166,13 @@ class CETrainer(Trainer):
                     self._epoch_preprocessing_eval()
                     self.model.eval()
                     eval_freq = 0.0 # evaluation frequency
-                    for batch_no, (features, labels) in enumerate(testData):
+                    for batch_no, (features, labels) in enumerate(self.testData):
                         # batch preprocessing
                         features, labels = self._batch_preprocessing(features, labels)
                         
                         # batch evaluation
-                        outputs, hidden_repr = self.model(features)
-                        eval_freq += self._batch_eval(features, labels, outputs, hidden_repr)
+                        predictions, hidden_repr = self.model(features)
+                        eval_freq += self._batch_eval(features, labels, predictions, hidden_repr)
                     
                     self.log["eval_acc"].append(eval_freq / (len(testData)*testData.batch_size))
                     self._epoch_postprocessing_eval()

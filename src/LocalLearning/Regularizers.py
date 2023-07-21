@@ -5,6 +5,7 @@ import torch
 from torch import Tensor
 
 from .Trainers import Trainer
+from .LocalLearning import HiddenLayerModel 
 
 '''
 Regularizers are implemented as Decorators modifying Trainer in Trainers.py
@@ -304,4 +305,179 @@ class JFReg(Regularizer):
     @classmethod
     def _epoch_postprocessing_eval(cls, obj_ref) -> None:
         obj_ref.log["eval_JFReg_score"].append(obj_ref.eval_JFReg_score)
+
+
+class SpecReg(Regularizer):
+    '''
+    Implementation from Nassar et al.
+    '''
+
+    alpha = 1.0 # power law exponent
+    tau = 1     # x_min: minimum index of power law validity 
+
+    def __init__(self, alpha_SR=0.0, alpha=1.0, tau=1):
+        super(SpecReg, self).__init__(alpha_reg=alpha_SR)        
+        alpha = alpha
+        tau = tau
+
+    @classmethod
+    def _rxx_mean(
+            cls,
+            obj_ref,
+            x: Tensor,
+            rxx: Tensor,
+            mean: Tensor,
+            K: float=2e-02,
+            ) -> tuple:
+        x_shifted = x - K
+        rxx = x_shifted.T @ x_shifted   # autocorrelation matrix
+        mean = x_shifted.mean(axis=0)
+        return (rxx, mean)
+
+
+    @classmethod
+    def _cov_dataset(
+            cls,
+            obj_ref,
+            dtype=None,
+            ) -> Tensor:
+        '''
+        calculates the covariance matrix of hidden representations based on the
+        training data set
+        '''
+        #print(type(obj_ref.model).__name__)
+        #print("issubclass? ", issubclass(type(obj_ref.model), HiddenLayerModel))
+        assert issubclass(type(obj_ref.model), HiddenLayerModel)
+
+        if dtype is None:
+            dtype = obj_ref.dtype
+
+        with torch.no_grad():
+            noE = obj_ref.model.pSet["hidden_size"]
+
+            # initialize stat tensors
+            auto_corr = torch.zeros((noE, noE), device=obj_ref.device, dtype=dtype)
+            mean = torch.zeros((noE,), device=obj_ref.device, dtype=dtype)
+            pop_size = 0
+
+            # shift K - estimate of the mean
+            f, _ = next(iter(obj_ref.trainData))
+            K = f.mean()
+
+            for features, _ in obj_ref.trainData:
+                pop_size += len(features)
+                hidden_repr = obj_ref.model.hidden(features)
+                auto_corr, mean = cls._rxx_mean(obj_ref, hidden_repr, auto_corr, mean, K=K)
+            
+            Cxx = auto_corr - mean[None].T @ mean[None] / pop_size
+            Cxx /= pop_size - 1
+        
+            return Cxx.clone()
+
+    @classmethod
+    def _cov_epoch(
+            cls,
+            obj_ref,
+            hidden_repr: Tensor,
+            dtype: Tensor.type=torch.float64,
+            ) -> Tensor:
+        # prep and initialization of all variables
+        pop_size = len(hidden_repr)
+        noE = obj_ref.model.pSet["hidden_size"]
+        auto_corr = torch.zeros((noE, noE), device=obj_ref.device, dtype=dtype)
+        mean = torch.zeros((noE, ), device=obj_ref.device, dtype=dtype)
+        
+        # calculating Cxx
+        auto_corr, mean = cls._rxx_mean(obj_ref, hidden_repr, auto_corr, mean,)
+        Cxx = auto_corr - mean[None].T @ mean[None] / pop_size
+        Cxx /= pop_size - 1
+        return Cxx
+
+    @classmethod
+    def _spec_loss(
+            cls, 
+            obj_ref,
+            lambda_n: Tensor
+            ) -> Tensor:
+        fractional_deviation = (lambda_n / obj_ref.gamma_n) - 1.0
+        residual = fractional_deviation[cls.tau:]**2 + torch.maximum(
+                    fractional_deviation[cls.tau:], torch.zeros((1, ), device=obj_ref.device, dtype=obj_ref.dtype)
+                )
+        return residual.sum() / len(lambda_n)
+
+ 
+    @classmethod
+    def reg(
+        cls,
+        obj_ref,
+        features: Tensor,
+        labels: Tensor,
+        outputs: Tensor,
+        hidden_repr: Tensor,
+        ) -> Tensor:
+       
+        Cxx = cls._cov_epoch(obj_ref, hidden_repr, dtype=torch.float64)
+
+        # calculate approximate diagonal matrix of Cxx
+        D = obj_ref.S.conj().T @ Cxx @ obj_ref.S
+        approx_lambda_n = torch.diagonal(D, 0)
+
+        sr_loss = cls._spec_loss(obj_ref, approx_lambda_n)
+        obj_ref.cumm_spec_loss += float(sr_loss)
+        
+        return sr_loss
+
+    @classmethod
+    def _batch_preprocessing(
+            cls,
+            obj_ref,
+            features: torch.Tensor,
+            labels: torch.Tensor,
+            ) -> tuple:
+        features.requires_grad_()
+        return (features, labels)
+
+    @classmethod
+    def _epoch_preprocessing_train(cls, obj_ref) -> None:
+        '''
+        for each epoch, estimate the basis vectors of the 
+        covariance matrix based on the whole dataset to diagonalize it
+        '''
+        # prepare reference power law to compare to
+        n = torch.arange(1, obj_ref.model.pSet["hidden_size"] + 1, device=obj_ref.device, dtype=obj_ref.dtype)
+        obj_ref.gamma_n = n**(-cls.alpha)
+
+        # calculate diagonalizing orthogonal matrix S
+        Cxx = cls._cov_dataset(obj_ref, dtype=torch.float64)
+        lambda_n, S = torch.linalg.eigh(Cxx)
+        _, idxs = torch.sort(lambda_n, descending=True)
+        S = S[:, idxs]  # orthogonal matrix that diagonalizes Cxx with eigenvalues in descending order
+        obj_ref.S = S   # make transformation available for other methods
+
+        # introduce variable to keep track of SpecReg loss beyond batches
+        obj_ref.cumm_spec_loss = 0.0
+
+    @classmethod
+    def _epoch_postprocessing_train(cls, obj_ref) -> None:
+        obj_ref.log["SpecReg_loss"].append(obj_ref.cumm_spec_loss)
+
+    @classmethod
+    def reg_eval(
+            cls,
+            obj_ref,
+            features: torch.Tensor,
+            labels: torch.Tensor,
+            predictions: torch.Tensor,
+            hidden_repr: torch.Tensor,
+            ) -> None:
+        sr_score = obj_ref.SpecReg(obj_ref, features, labels, predictions, hidden_repr,)
+        obj_ref.eval_spec_score += float(sr_score)
+
+    @classmethod
+    def _epoch_preprocessing_eval(cls, obj_ref) -> None:
+        obj_ref.eval_spec_score = 0.0
+
+    @classmethod
+    def _epoch_postprocessing_eval(cls, obj_ref) -> None:
+        obj_ref.log["eval_SpecReg_score"].append(obj_ref.eval_spec_score)
 

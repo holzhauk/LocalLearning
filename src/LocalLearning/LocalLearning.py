@@ -288,11 +288,11 @@ class FKHL3(KHL3):
 class HiddenLayerModel(nn.Module):
     
     pSet = {
-        "hidden": 2000,
+        "hidden_size": 2000,
     }
     
     def __init__(self):
-        super(HiddenLayerModel, self).__init__()
+        super().__init__()
 
     def hidden(self, x: torch.Tensor):
         pass
