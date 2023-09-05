@@ -1,147 +1,16 @@
+from abc import ABC, abstractmethod
+
 import math
 from pathlib import Path
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
+
+import copy
 
 import torch
-from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
-from torchvision import datasets
-from torchvision.transforms import ToTensor
 from torch import nn
 from torch import Tensor
 from torch.optim import Adam
-
-class GaussianData(Dataset):
-    def __init__(
-        self, 
-        params: dict,
-        train: bool=True,
-        **kwargs,
-    ):
-        # params = {
-        #   // Parameters of the Gaussian Process
-        #   "mu": 0.0,
-        #   "sigma": 1.0,
-        #   // Image Extensions
-        #   "img_width_px": 32,
-        #   "img_height_px": 32,
-        #   "img_ch_num": 3,
-        # }
-        self.mu = params["mu"]
-        self.sigma = params["sigma"]
-        
-        # dimensions of the CIFAR10 dataset
-        # 60 000 samples in total
-        self.img_width_px = params["img_width_px"]
-        self.img_height_px = params["img_height_px"]
-        self.img_ch_num = params["img_ch_num"]
-        
-        if train:
-            self.len = 50000
-            
-        else:
-            self.len = 10000
-            
-        #self.data = torch.rand(
-        #    (self.len, self.img_width_px, self.img_height_px, self.img_ch_num, ),
-        #)
-        #self.data = self.data.normal_(mean=self.mu, std=self.sigma)
-        
-        #self.targets = torch.zeros((self.len, 1, ))
-        
-    def __len__(self):
-        return self.len
-    
-    def __getitem__(self, index):
-        
-        img_gauss = torch.rand(
-            (self.img_width_px, self.img_height_px, self.img_ch_num, ),
-        )
-        img_gauss = img_gauss.normal_(mean=self.mu, std=self.sigma)
-        
-        dummy_target = torch.Tensor([0.0])
-        #return self.data[index], self.targets[index]
-        return img_gauss, dummy_target
-
-
-class LpUnitCIFAR10(datasets.CIFAR10):
-    def __init__(self, root, transform, train=True, device=torch.device('cpu'), p=2.0, **kwargs):
-        super(LpUnitCIFAR10, self).__init__(
-            root=root, transform=transform, train=train, download=True, **kwargs,
-        )
-        self.p = p
-        self.flat = nn.Flatten()
-        self.device = device
-        self.data = torch.tensor(self.data.astype('float32'))
-        #self.data = self.data.to(self.device)
-        self.data /= torch.norm(self.flat(self.data), p=self.p, dim=-1)[:, None, None, None]
-        self.data = self.data.detach().cpu().numpy()
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        # Args:  index (int): index of the data set
-        # Value: feature, target (tuple): feature-target pair 
-        #                                 with respective index in the dataset
-        return self.data[index], self.targets[index]
-
-
-class LpUnitMNIST(datasets.MNIST):
-    def __init__(self, root, train=True, device=torch.device('cpu'), p=2.0, **kwargs):
-        super(LpUnitMNIST, self).__init__(
-            root=root, transform=ToTensor(), train=train, download=True, **kwargs,
-        )
-        self.p = p
-        self.flat = nn.Flatten()
-        self.device = device
-        self.data = self.data.type(torch.float32)
-        #self.data = self.data.to(self.device)
-        self.data /= torch.norm(self.flat(self.data), p=self.p, dim=-1)[:, None, None]
-        self.data = self.data.detach().cpu().numpy()
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        # Args:  index (int): index of the data set
-        # Value: feature, target (tuple): feature-target pair 
-        #                                 with respective index in the dataset
-        return self.data[index], self.targets[index]
-
-class DeviceDataLoader(DataLoader):
-    # DataLoader class that operates on datasets entirely moved 
-    # to a specific device
-    # Should only be used with datasets that are small enough to be stored
-    # on the respective device.
-    # Speeds up operation by a lot, because data does not has to be moved
-    # between devices during training or inference.
-
-    def __init__(
-            self,
-            dataset,
-            device=None,
-            batch_size=100,
-            num_workers=0,
-            **kwargs,
-            ):
-        if type(device) == type(None):
-            raise ValueError("device=None -- Please specify the device to compute on (CPU/GPU)")
-
-        if device != torch.device('cpu'):
-            num_workers = 0
-
-        # initialize DataLoader with dataset and parameters
-        super(DeviceDataLoader, self).__init__(dataset, batch_size=batch_size,num_workers=num_workers,**kwargs)
-
-        # move the data to the specified device
-        if type(self.dataset.data) != torch.Tensor:
-            self.dataset.data = torch.tensor(self.dataset.data)
-            self.dataset.targets = torch.tensor(self.dataset.targets)
-        
-        if self.dataset.data.device != device:
-            self.dataset.data = self.dataset.data.to(device)
-            self.dataset.targets = self.dataset.targets.to(device)
 
 
 class KHL3(nn.Module):
@@ -163,7 +32,7 @@ class KHL3(nn.Module):
     }
 
     def __init__(self, params: dict, sigma=None):
-        super(KHL3, self).__init__()
+        super().__init__()
 
         self.pSet["in_size"] = params["in_size"]
         self.pSet["hidden_size"] = params["hidden_size"]
@@ -254,7 +123,7 @@ class FKHL3(KHL3):
     """
 
     def __init__(self, params: dict, sigma=None):
-        super(FKHL3, self).__init__(params, sigma)
+        super().__init__(params, sigma)
 
     # redefining the relevant routines to make them fast
     # "fast" means that it allows for parallel mini-batch processing
@@ -285,7 +154,7 @@ class FKHL3(KHL3):
         self.W += dW / (nc * self.pSet["tau_l"])
 
 
-class HiddenLayerModel(nn.Module):
+class HiddenLayerModel(nn.Module, ABC):
     
     pSet = {
         "hidden_size": 2000,
@@ -293,9 +162,30 @@ class HiddenLayerModel(nn.Module):
     
     def __init__(self):
         super().__init__()
+        setattr(self, 'forward', self._forward)
+        self.device = torch.device('cpu')
 
+    @abstractmethod
     def hidden(self, x: torch.Tensor):
         pass
+
+    @abstractmethod
+    def _forward(self, x: torch.Tensor):
+        pass
+
+    def pred(self):
+        def preds(x: torch.Tensor) -> torch.Tensor:
+            logits, hidden = self._forward(x)
+            return (torch.argmax(logits, dim=-1), hidden)
+        setattr(self, 'forward', preds)
+
+    def eval(self):
+        super().eval()
+        setattr(self, 'forward', self._forward)
+
+    def train(self, val=True):
+        super().train(val)
+        setattr(self, 'forward', self._forward)
 
     def save(self, filepath: Path):
         pass
@@ -317,29 +207,46 @@ class KHModel(HiddenLayerModel):
 
     pSet = {}
 
-    def __init__(self, ll_trained_state: dict):
-        super(KHModel, self).__init__()
+    def __init__(self, *args): #ll_trained_state: dict):
+        super().__init__()
 
-        self.pSet = ll_trained_state["model_parameters"]
-        self.local_learning = FKHL3(self.pSet)
-        self.local_learning.load_state_dict(ll_trained_state["model_state_dict"])
-        self.local_learning.requires_grad_(False)
-
+        if len(args) != 1:
+            raise IOError("'KHModel' constructor does not accept more than 1 argument")
+        
         self.relu_h = nn.ReLU()
         self.relu_h.requires_grad_(False)
 
-        self.dense = nn.Linear(self.pSet["hidden_size"], 10)
-        self.dense.requires_grad_(True)
-
         self.softMax = nn.Softmax(dim=-1)
+
+        if type(args[0]) is dict:
+            trained_state = args[0]
+            self.pSet = trained_state["fkhl3-state"]["model_parameters"]
+            self.local_learning = FKHL3(self.pSet)
+
+            self.dense = nn.Linear(self.pSet["hidden_size"], 10)
+            self.dense.requires_grad_(True)
+
+            #self.local_learning.load_state_dict(ll_trained_state["model_state_dict"])
+            self.load_state_dict(trained_state["model_state_dict"])
+        elif issubclass(type(args[0]), KHL3):
+            self.local_learning = args[0]
+            self.pSet = copy.deepcopy(self.local_learning.pSet)
+
+            self.dense = nn.Linear(self.pSet["hidden_size"], 10)
+            self.dense.requires_grad_(True)
+        else:
+            raise TypeError("'KHModel' constructor does not accept arguments of this type")
+
+        self.local_learning.requires_grad_(False)
+
 
     def hidden(self, x: torch.Tensor) -> Tensor:
         return self.local_learning(x)
 
-    def forward(self, x: Tensor) -> Tensor:
-        h = self.hidden(x)
-        latent_activation = torch.pow(self.relu_h(h), self.pSet["n"])
-        return self.dense(latent_activation)
+    def _forward(self, x: Tensor) -> Tensor:
+        hidden = self.hidden(x)
+        latent_activation = torch.pow(self.relu_h(hidden), self.pSet["n"])
+        return (self.dense(latent_activation), hidden)
 
 
 class SHLP(HiddenLayerModel):
@@ -386,7 +293,7 @@ class SHLP(HiddenLayerModel):
         x_flat = self.flatten(x)
         return x_flat @ self.W
         
-    def forward(self, x: torch.Tensor):
+    def _forward(self, x: torch.Tensor):
         hidden = self.hidden(x)
         latent_activation = torch.pow(self.ReLU(hidden), self.pSet["n"])
         return self.dense(latent_activation), hidden
@@ -403,7 +310,7 @@ class SpecRegModel(SHLP):
         "nu": 10, # regularizing cutoff
     }
 
-    def __init__(params: dict=None, sigma: float=None, dtype: torch.dtype=torch.float32, **kwargs):
+    def __init__(self, params: dict=None, sigma: float=None, dtype: torch.dtype=torch.float32, **kwargs):
         super(SpecRegModel, self).__init__(params=params, sigma=sigma, dtype=dtype, **kwargs)
         if type(params) != type(None):
             self.pSet["nu"] = params["nu"]
