@@ -6,7 +6,6 @@ import torch
 from torch import Tensor
 from torch import nn
 from torch.utils.data import DataLoader
-from torch.optim import Adam
 
 from tqdm.autonotebook import tqdm
 
@@ -41,6 +40,19 @@ class AdversarialAttack(ABC):
         return adversarial_examples
 
 
+class WhiteGaussianPerturbation(AdversarialAttack):
+
+    def __init__(self, model: HiddenLayerModel):
+        super().__init__(model)
+
+    def create_examples(self, eps: float, data: Tensor, targets: Tensor, loss_fn: callable) -> Tensor:
+        # eps - noise intensity ~ variance 
+        
+        data_size = data.size()
+        noise = torch.empty(data_size, device=data.device).normal_(mean=0.0, std=1.0)
+        return (data +eps*noise).detach()
+
+
 class FGSM(AdversarialAttack):
     
     def __init__(self, model: HiddenLayerModel, mode="U"):
@@ -68,11 +80,13 @@ class PGD(AdversarialAttack):
     params = {
         "num_it": 10, # number of iterations,
         "dl": 1.0, # step size
+        "dl_deps": 1e-1,
         "norm_p": "inf",
     }
     
     def __init__(self, model: HiddenLayerModel, params: dict, mode="U"):
         super(PGD, self).__init__(model, mode=mode, params=params)
+        
         if type(self.params["norm_p"]) is str: # norm_p = 'inf' but also any other string type
             self._grad_step = self._Linf_grad
             self._L_ball_projection = self._Linf_ball_projection
@@ -91,16 +105,16 @@ class PGD(AdversarialAttack):
     def _L_ball_projection(self, data: Tensor, adv: Tensor, eps: Tensor) -> Tensor:
         pass
 
-    def _grad_step(self, grad: Tensor) -> Tensor:
+    def _grad_step(self, grad: Tensor, dl: float) -> Tensor:
         pass
 
-    def _Linf_grad(self, grad: Tensor) -> Tensor:
-        return self.params["dl"]*grad.sign()
+    def _Linf_grad(self, grad: Tensor, dl: float) -> Tensor:
+        return dl*grad.sign()
     
-    def _Lp_grad(self, grad: Tensor) -> Tensor:
+    def _Lp_grad(self, grad: Tensor, dl: float) -> Tensor:
         # normalize each images gradient according to the Lp-norm
         norm_grad = self._img_wise_Lp_norm(grad)
-        return self.params["dl"]*self._img_wise_normalize(grad, norm_grad)
+        return dl*self._img_wise_normalize(grad, norm_grad)
     
     def _Linf_ball_projection(self, data: Tensor, adv: Tensor, eps: Tensor) -> Tensor:
         linf_radii_right = data.T + eps[..., :]
@@ -108,21 +122,23 @@ class PGD(AdversarialAttack):
         return torch.max(torch.min(adv, linf_radii_right.T), linf_radii_left.T)
 
     def _Lp_ball_projection(self, data: Tensor, adv: Tensor, eps: Tensor) -> Tensor:
-        delta = adv - data
+        delta = adv.clone().detach() - data
         dists = self._img_wise_Lp_norm(delta)
         # check for clipping event
         mask = (dists <= eps)
         # normalize
         scaling = dists
-        scaling[mask] = eps # clipping -> projection onto Lp ball
+        scaling[mask] = eps[mask] # clipping -> projection onto Lp ball
         delta = self._img_wise_normalize(delta, scaling).T
-        delta /= eps[..., :]
-        return data + delta.T
+        delta *= eps[..., :]
+        return (data + delta.T).detach()
 
     def create_examples(self, eps: float, data: Tensor, targets: Tensor, loss_fn: callable) -> Tensor:
+        dl = self.params["dl"]
+        
         if eps < self.params["dl"]:
-            dl = self.params["dl"]
-            raise ValueError(f"eps bound can not be smaller than gradient update length dl: eps = {eps}.4f < {dl}.4f = dl")
+            dl = self.params["dl_deps"]*eps
+            #raise ValueError(f"eps bound can not be smaller than gradient update length dl: eps = {eps}.4f < {dl}.4f = dl")
         self.model.eval()
         adv = data.clone().detach().requires_grad_(True)
         eps = torch.ones((adv.size(dim=0),), device=data.device)*eps
@@ -138,9 +154,9 @@ class PGD(AdversarialAttack):
             grad = _adv.grad.data
 
             # gradient step
-            adv = adv + self.grad_sign*self._grad_step(grad)
+            adv = adv + self.grad_sign*self._grad_step(grad, dl)
             # projection step
-            #adv = self._L_ball_projection(data.clone().detach(), adv, eps)
+            adv = self._L_ball_projection(data, adv, eps)
         
         adv = torch.clamp(adv, 0.0, 1.0)
         return adv.detach()
@@ -148,7 +164,6 @@ class PGD(AdversarialAttack):
 
 
 class AttackTest():
-
 
     def __init__(
             self, 
@@ -183,8 +198,10 @@ class AttackTest():
 
 
         no_images = len(loader.dataset)
-        crit_eps = torch.zeros((no_images,), dtype=dtype, device=self.device)
-        crit_norm = torch.zeros((no_images,), dtype=dtype, device=self.device)
+        crit_eps = torch.empty((no_images,), dtype=dtype, device=self.device)
+        crit_eps[:] = float('nan') 
+        crit_norm = torch.empty((no_images,), dtype=dtype, device=self.device)
+        crit_norm[:] = float('nan')
         was_correct = torch.ones((no_images, ), dtype=torch.bool, device=self.device)
         accuracy = []
 
