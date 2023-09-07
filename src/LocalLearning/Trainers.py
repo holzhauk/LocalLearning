@@ -2,10 +2,14 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from pathlib import Path
+import json
+
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from torch.optim import Adam
+from torch.optim.lr_scheduler import LambdaLR
 
 from tqdm.autonotebook import tqdm
 
@@ -14,12 +18,44 @@ from .LocalLearning import HiddenLayerModel
 # define the training interface
 class Trainer(ABC):
 
+    class Logger():
+        def __init__(self, model: HiddenLayerModel=None):
+            self.model_type = type(model).__name__
+            self.model_path = Path("")
+            self.log = {}
+
+        def __getitem__(self, key: str):
+            return self.log[key]
+        
+        def __setitem__(self, key: str, val):
+            self.log[key] = val
+
+        def __delitem__(self, key: str):
+            del self.log[key]
+
+        def save(self, path: Path):
+            json_object = json.dumps(vars(self))
+            with open(path, "w") as file:
+                file.write(json_object)
+
+        def load(self, path: Path):
+            with open(path, "r") as file:
+                json_obj = json.load(file)
+                self.model_type = json_obj["model_type"]
+                self.model_path = json_obj["model_path"]
+                self.log = json_obj["log"]
+
+        def keys(self) -> list:
+            return self.log.keys()
+
+
     def __init__(
             self,
             model: nn.Module,
             ):
         super(Trainer, self).__init__()
         self.model = model
+        self.log = Trainer.Logger(self.model)
 
     @abstractmethod
     def run(
@@ -81,6 +117,11 @@ class Trainer(ABC):
             ) -> float:
         pass
 
+    def save(self, model_path: Path, log_path: Path):
+        self.log.model_path = str(model_path)
+        torch.save(self.model.state_dict(), model_path)
+        self.log.save_log(log_path)
+
 
 class CETrainer(Trainer):
     
@@ -103,10 +144,16 @@ class CETrainer(Trainer):
         #self.sPs = spectral_ps
         self.device = device
         self.dtype = dtype
-        self.learning_rate = learning_rate
+
+        if type(learning_rate) is float:
+            self.learning_rate = lambda epoch: learning_rate
+        elif type(learning_rate) is callable:
+            self.learning_rate = learning_rate
+        else:
+            raise ValueError("learning_rate neither 'float' nor 'callable'")
+        
         
         # History Logging Functionality
-        self.log = {}
         self.log["epoch"] = []
         self.log["loss"] = []
         self.log["ce_loss"] = []
@@ -123,7 +170,8 @@ class CETrainer(Trainer):
         # make dataloader accessible for decorators as well
         self.trainData = trainData
         self.testData = testData
-        optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
+        optimizer = Adam(self.model.parameters(), lr=1.0)
+        scheduler = LambdaLR(optimizer, lr_lambda=[self.learning_rate])
     
         with tqdm(range(1, no_epochs + 1), unit="epoch") as tepoch:
             tepoch.set_description(f"Training time [epochs]")
@@ -164,7 +212,7 @@ class CETrainer(Trainer):
                 
                 if testData is not None:
                     self._epoch_preprocessing_eval()
-                    self.model.eval()
+                    self.model.pred()
                     eval_freq = 0.0 # evaluation frequency
                     for batch_no, (features, labels) in enumerate(self.testData):
                         # batch preprocessing
@@ -176,6 +224,8 @@ class CETrainer(Trainer):
                     
                     self.log["eval_acc"].append(eval_freq / (len(testData)*testData.batch_size))
                     self._epoch_postprocessing_eval()
+
+                scheduler.step()
 
     def _epoch_preprocessing_train(
             self,
@@ -236,6 +286,6 @@ class CETrainer(Trainer):
             hidden_repr: torch.Tensor,
             ) -> float:
 
-        predictions = torch.argmax(predictions, dim=-1)
+        #predictions = torch.argmax(predictions, dim=-1)
         frequency = ((torch.abs(predictions - labels.to(self.device)) == 0).sum())
         return float(frequency)

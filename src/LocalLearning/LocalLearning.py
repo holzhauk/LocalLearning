@@ -34,14 +34,8 @@ class KHL3(nn.Module):
     def __init__(self, params: dict, sigma=None):
         super().__init__()
 
-        self.pSet["in_size"] = params["in_size"]
-        self.pSet["hidden_size"] = params["hidden_size"]
-        self.pSet["n"] = params["n"]  # not used in this class, but belongs to the model
-        self.pSet["p"] = params["p"]
-        self.pSet["tau_l"] = params["tau_l"]
-        self.pSet["k"] = params["k"]
-        self.pSet["Delta"] = params["Delta"]
-        self.pSet["R"] = params["R"]
+
+        self._write_pSet(params["pSet"])
 
         self.flatten = nn.Flatten()
         self.flatten.requires_grad_(False)
@@ -97,6 +91,33 @@ class KHL3(nn.Module):
 
     def param_dict(self) -> dict:
         return self.pSet
+    
+    def _write_pSet(self, params: dict) -> None:
+        self.pSet["in_size"] = params["in_size"]
+        self.pSet["hidden_size"] = params["hidden_size"]
+        self.pSet["n"] = params["n"]  # not used in this class, but belongs to the model
+        self.pSet["p"] = params["p"]
+        self.pSet["tau_l"] = params["tau_l"]
+        self.pSet["k"] = params["k"]
+        self.pSet["Delta"] = params["Delta"]
+        self.pSet["R"] = params["R"]
+    
+    def state_dict(self, *args, **kwargs) -> dict:
+        state_dict = super(KHL3, self).state_dict(*args, **kwargs)
+        state_dict["pSet"] = self.pSet
+        state_dict["type_name"] = type(self).__name__
+        return state_dict
+    
+    def load_state_dict(self, state_dict: dict, *args, **kwargs) -> None:
+        if state_dict["type_name"] != type(self).__name__:
+            raise IOError(f"state_dict does not correspond to {type(self).__name__} model")
+        dummy = state_dict.copy()
+        del dummy["type_name"]
+
+        self._write_pSet(dummy["pSet"])
+        del dummy["pSet"]
+
+        super(KHL3, self).load_state_dict(dummy, *args, **kwargs)
 
     def eval(self) -> None:
         pass
@@ -187,12 +208,6 @@ class HiddenLayerModel(nn.Module, ABC):
         super().train(val)
         setattr(self, 'forward', self._forward)
 
-    def save(self, filepath: Path):
-        pass
-
-    def load(self, filepath: Path):
-        pass
-
 
 class KHModel(HiddenLayerModel):
     """
@@ -207,11 +222,11 @@ class KHModel(HiddenLayerModel):
 
     pSet = {}
 
-    def __init__(self, *args): #ll_trained_state: dict):
+    def __init__(self, *args, **kwargs): #ll_trained_state: dict):
         super().__init__()
 
-        if len(args) != 1:
-            raise IOError("'KHModel' constructor does not accept more than 1 argument")
+        if len(args) < 1:
+            raise IOError("'KHModel' constructor does not accept less than 1 argument")
         
         self.relu_h = nn.ReLU()
         self.relu_h.requires_grad_(False)
@@ -219,25 +234,54 @@ class KHModel(HiddenLayerModel):
         self.softMax = nn.Softmax(dim=-1)
 
         if type(args[0]) is dict:
-            trained_state = args[0]
-            self.pSet = trained_state["fkhl3-state"]["model_parameters"]
-            self.local_learning = FKHL3(self.pSet)
+            state_dict = args[0]
+            if state_dict["type_name"] != type(self).__name__:
+                raise IOError(f"state_dict does not correspond to {type(self).__name__} model")
+            self.local_learning = FKHL3(state_dict["pSet"]["FKHL3_pSet"])
 
-            self.dense = nn.Linear(self.pSet["hidden_size"], 10)
-            self.dense.requires_grad_(True)
+            self.dense = nn.Linear(state_dict["pSet"]["FKHL3_pSet"]["hidden_size"], state_dict["no_classes"])
 
-            #self.local_learning.load_state_dict(ll_trained_state["model_state_dict"])
-            self.load_state_dict(trained_state["model_state_dict"])
-        elif issubclass(type(args[0]), KHL3):
+            self.load_state_dict(state_dict)
+
+        elif issubclass(type(args[0]), FKHL3):
             self.local_learning = args[0]
             self.pSet = copy.deepcopy(self.local_learning.pSet)
 
-            self.dense = nn.Linear(self.pSet["hidden_size"], 10)
-            self.dense.requires_grad_(True)
+            # second argument must be keyword and has to be number of classification units
+            if ("no_classes" not in kwargs.keys()) or  ((type(kwargs["no_classes"])) is not int):
+                raise IOError(f"First constructor element is of type {type(args[0]).__name__}" + 
+                              f", but second is not no_classes='int' but {kwargs} of type {type(args[1]).__name__}") 
+            self.pSet["no_classes"] = kwargs['no_classes']
+
+            self.dense = nn.Linear(self.pSet["hidden_size"], self.pSet["no_classes"])
+
         else:
             raise TypeError("'KHModel' constructor does not accept arguments of this type")
 
+        self.dense.requires_grad_(True)
         self.local_learning.requires_grad_(False)
+
+    def state_dict(self, *args, **kwargs) -> dict:
+        state_dict = super(KHModel, self).state_dict(*args, **kwargs)
+        dummy = self.pSet.copy()
+        state_dict["pSet"]["no_classes"] = dummy["no_classes"]
+        del dummy["no_classes"]
+        state_dict["pSet"]["FKHL3_pSet"] = dummy
+        state_dict["type_name"] = type(self).__name__
+        return state_dict
+    
+    def load_state_dict(self, state_dict: dict, *args, **kwargs) -> None:
+        if state_dict["type_name"] != type(self).__name__:
+            raise IOError(f"state_dict does not correspond to {type(self).__name__} model")
+        dummy = state_dict.copy()
+        del dummy["type_name"]
+
+        pSet =dummy["pSet"]["FKHL3_pSet"].copy()
+        pSet["no_classes"] = dummy["no_classes"]
+        self.pSet = pSet
+        del dummy["pSet"]
+
+        super().load_state_dict(dummy, *args, **kwargs)
 
 
     def hidden(self, x: torch.Tensor) -> Tensor:
@@ -297,6 +341,23 @@ class SHLP(HiddenLayerModel):
         hidden = self.hidden(x)
         latent_activation = torch.pow(self.ReLU(hidden), self.pSet["n"])
         return self.dense(latent_activation), hidden
+    
+    def state_dict(self) -> dict:
+        state_dict = super().state_dict
+        state_dict["pSet"] = self.pSet
+        state_dict["type_name"] = type(self).__name__
+        return state_dict
+    
+    def load_state_dict(self, state_dict: dict) -> None:
+        if state_dict["type_name"] != type(self).__name_:
+            raise IOError(f"state_dict does not correspond to {type(self).__name__} model")
+        dummy = state_dict.copy()
+        del dummy["type_name"]
+
+        self.pSet = dummy["pSet"].copy()
+        del dummy["pSet"]
+
+        super().load_state_dict(dummy)
 
 
 class SpecRegModel(SHLP):
