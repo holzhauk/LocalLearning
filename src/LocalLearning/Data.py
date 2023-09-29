@@ -9,6 +9,8 @@ from torchvision.transforms import ToTensor
 
 from tqdm.autonotebook import tqdm
 
+import numpy as np
+
 class GaussianData(Dataset):
     def __init__(
         self, 
@@ -116,8 +118,8 @@ class BaselineAccurateTestData(Dataset):
             dataset: Dataset,
             ):
         super().__init__()
-        dset_dummy = copy.deepcopy(dataset)
-        mask = torch.zeros((dset_dummy.data.size(dim=0), ), dtype=torch.bool)
+        
+        mask = torch.zeros((len(dataset.data), ), dtype=torch.bool)
         loader = DataLoader(dataset, shuffle=False)
         with tqdm(loader, unit="batch") as tbatch:
             tbatch.set_description(f"Testing dataset [batch]")
@@ -126,18 +128,14 @@ class BaselineAccurateTestData(Dataset):
                 model.pred()
                 for batch_nr, batch in enumerate(tbatch):
                     data, labels = batch
+                    data = data.to(model.device)
+                    labels = labels.to(model.device)
                     preds, _ = model(data)
                     batch_size = len(data)
                     mask[batch_nr*batch_size:(batch_nr+1*batch_size)] = torch.eq(preds, labels)
         
-        #dset_dummy.data = dset_dummy.data[mask]
-        #dset_dummy.targets = dset_dummy.targets[mask]
-
-        self.data = dset_dummy.data[mask].clone()
-        self.targets = dset_dummy.targets[mask].clone()
-
-        #self = copy.deepcopy(dset_dummy)
-        del dset_dummy
+        self.data = dataset.data[mask].copy()
+        self.targets = list(np.array(dataset.targets)[mask]).copy()
 
     def __len__(self):
         return len(self.data)

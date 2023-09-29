@@ -120,7 +120,7 @@ class Trainer(ABC):
     def save(self, model_path: Path, log_path: Path):
         self.log.model_path = str(model_path)
         torch.save(self.model.state_dict(), model_path)
-        self.log.save_log(log_path)
+        self.log.save(log_path)
 
 
 class CETrainer(Trainer):
@@ -134,20 +134,18 @@ class CETrainer(Trainer):
 
     def __init__(self,
                  model: HiddenLayerModel,
-                 device: torch.device,
-                 #spectral_ps: sPs=sPs,
                  learning_rate: float=1e-4,
                  dtype: torch.dtype=torch.float32,
                 ):
         super(CETrainer, self).__init__(model)
         #self.no_epochs = no_epochs
         #self.sPs = spectral_ps
-        self.device = device
+        self.device = self.model.device
         self.dtype = dtype
 
         if type(learning_rate) is float:
             self.learning_rate = lambda epoch: learning_rate
-        elif type(learning_rate) is callable:
+        elif type(learning_rate).__name__ == 'function':
             self.learning_rate = learning_rate
         else:
             raise ValueError("learning_rate neither 'float' nor 'callable'")
@@ -222,7 +220,7 @@ class CETrainer(Trainer):
                         predictions, hidden_repr = self.model(features)
                         eval_freq += self._batch_eval(features, labels, predictions, hidden_repr)
                     
-                    self.log["eval_acc"].append(eval_freq / (len(testData)*testData.batch_size))
+                    self.log["eval_acc"].append(eval_freq / len(testData.dataset))
                     self._epoch_postprocessing_eval()
 
                 scheduler.step()

@@ -4,8 +4,8 @@ from .LocalLearning import FKHL3
 from .LocalLearning import KHModel
 from .LocalLearning import HiddenLayerModel
 from .LocalLearning import SHLP
-from .LocalLearning import SpecRegModel
 from .LocalLearning import IdentityModel
+from .LocalLearning import ModelFactory
 
 # Datasets
 #from .LocalLearning import LpUnitCIFAR10
@@ -29,3 +29,6 @@ from . import Attacks
 
 # Data studd
 from . import Data
+
+# Experiments
+from . import Experiments

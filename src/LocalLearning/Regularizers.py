@@ -194,9 +194,9 @@ class JFReg(Regularizer):
     def __init__(self, alpha_JF=0.0, n=1):
         super(JFReg, self).__init__(alpha_reg=alpha_JF)
         JFReg.no_projections = n
-        assert (no_projections == -1) or (no_projections > 0)
+        assert (JFReg.no_projections == -1) or (JFReg.no_projections > 0)
         
-        if no_projections == -1:
+        if JFReg.no_projections == -1:
             #setattr(self, "_JF", self._exact_JFReg)
             JFReg._JF = self._exact_JFReg
         else:

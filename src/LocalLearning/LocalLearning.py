@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 from tqdm.autonotebook import tqdm
 
+from collections import OrderedDict
 import copy
 
 import torch
@@ -31,26 +32,48 @@ class KHL3(nn.Module):
         "R": 1.0,
     }
 
-    def __init__(self, params: dict, sigma=None):
+    def __init__(self, init_dict: dict, sigma=None):
+        '''
+        ARGS:
+            init_dict (dict):   either
+                                (I) - init_dict = state_dict: initialising KHL3 type model
+                                        - from serialized form, loading parameter values
+                                (II) - init_dict = pSet: initialising KHL3 based on description
+                                        - random values
+        '''
         super().__init__()
-
-
-        self._write_pSet(params["pSet"])
 
         self.flatten = nn.Flatten()
         self.flatten.requires_grad_(False)
-        #  initialize weights
-        self.W = nn.Parameter(
-            torch.zeros((self.pSet["in_size"], self.pSet["hidden_size"])),
-            requires_grad=False,
-        )
-        # self.W = nn.Parameter(self.W) # W is a model parameter
-        if type(sigma) == type(None):
-            # if sigma is not explicitely specified, use Glorot
-            # initialisation scheme
-            sigma = 1.0 / math.sqrt(self.pSet["in_size"] + self.pSet["hidden_size"])
-            
-        self.W.normal_(mean=0.0, std=sigma)
+        
+        # differentiate between both forms of initialization (I, II) based on 
+        # structure of the dict
+        try: # assume init_dict is torch state dict
+            if init_dict['type_name'] != type(self).__name__:
+                raise IOError(f"state_dict does not correspond to {type(self).__name__} model")
+            else:
+                self._write_pSet(init_dict["pSet"])
+                self.W = nn.Parameter(
+                    torch.empty((self.pSet["in_size"], self.pSet["hidden_size"])),
+                    requires_grad=False,
+                )
+                self.load_state_dict(init_dict)
+        except KeyError: # otherwise init_dict is pSet
+            parameter_set = init_dict
+            self._write_pSet(parameter_set)
+
+            #  initialize weights
+            self.W = nn.Parameter(
+                torch.zeros((self.pSet["in_size"], self.pSet["hidden_size"])),
+                requires_grad=False,
+            )
+            # self.W = nn.Parameter(self.W) # W is a model parameter
+            if type(sigma) == type(None):
+                # if sigma is not explicitely specified, use Glorot
+                # initialisation scheme
+                sigma = 1.0 / math.sqrt(self.pSet["in_size"] + self.pSet["hidden_size"])
+
+            self.W.normal_(mean=0.0, std=sigma)
 
     def __metric_tensor(self):
         eta = torch.abs(self.W)
@@ -144,7 +167,7 @@ class FKHL3(KHL3):
     """
 
     def __init__(self, params: dict, sigma=None):
-        super().__init__(params, sigma)
+        super(FKHL3, self).__init__(params, sigma)
 
     # redefining the relevant routines to make them fast
     # "fast" means that it allows for parallel mini-batch processing
@@ -208,6 +231,12 @@ class HiddenLayerModel(nn.Module, ABC):
         super().train(val)
         setattr(self, 'forward', self._forward)
 
+    def to(self, dev: torch.device):
+        super().to(dev)
+        p0 = next(iter(self.parameters()))
+        self.device = p0.device
+        
+
 
 class KHModel(HiddenLayerModel):
     """
@@ -233,13 +262,13 @@ class KHModel(HiddenLayerModel):
 
         self.softMax = nn.Softmax(dim=-1)
 
-        if type(args[0]) is dict:
+        if type(args[0]).__name__ == OrderedDict.__name__:
             state_dict = args[0]
             if state_dict["type_name"] != type(self).__name__:
                 raise IOError(f"state_dict does not correspond to {type(self).__name__} model")
             self.local_learning = FKHL3(state_dict["pSet"]["FKHL3_pSet"])
 
-            self.dense = nn.Linear(state_dict["pSet"]["FKHL3_pSet"]["hidden_size"], state_dict["no_classes"])
+            self.dense = nn.Linear(state_dict["pSet"]["FKHL3_pSet"]["hidden_size"], state_dict["pSet"]["no_classes"])
 
             self.load_state_dict(state_dict)
 
@@ -258,15 +287,17 @@ class KHModel(HiddenLayerModel):
         else:
             raise TypeError("'KHModel' constructor does not accept arguments of this type")
 
-        self.dense.requires_grad_(True)
         self.local_learning.requires_grad_(False)
+        self.dense.requires_grad_(True)
+        
 
     def state_dict(self, *args, **kwargs) -> dict:
-        state_dict = super(KHModel, self).state_dict(*args, **kwargs)
+        state_dict = super().state_dict(*args, **kwargs)
         dummy = self.pSet.copy()
+        state_dict["pSet"] = {}
         state_dict["pSet"]["no_classes"] = dummy["no_classes"]
         del dummy["no_classes"]
-        state_dict["pSet"]["FKHL3_pSet"] = dummy
+        state_dict["pSet"]["FKHL3_pSet"] = dummy.copy()
         state_dict["type_name"] = type(self).__name__
         return state_dict
     
@@ -277,7 +308,7 @@ class KHModel(HiddenLayerModel):
         del dummy["type_name"]
 
         pSet =dummy["pSet"]["FKHL3_pSet"].copy()
-        pSet["no_classes"] = dummy["no_classes"]
+        pSet["no_classes"] = dummy["pSet"]["no_classes"]
         self.pSet = pSet
         del dummy["pSet"]
 
@@ -302,15 +333,28 @@ class SHLP(HiddenLayerModel):
         "hidden_size": 2000,
         "n": 4.5,
         "no_classes": 10,
+        "batch_norm": False,
     }
-    
-    def __init__(self, params: dict=None, sigma: float=None, dtype: torch.dtype=torch.float32, **kwargs):
+
+    def __init__(self, in_dict: dict=None, sigma: float=None, batch_norm=False, dtype: torch.dtype=torch.float32, **kwargs):
         super(SHLP, self).__init__()
-        if type(params) != type(None):
-            self.pSet["in_size"] = params["in_size"]
-            self.pSet["hidden_size"] = params["hidden_size"]
-            self.pSet["n"] = params["n"]
-            self.pSet["no_classes"] = params["no_classes"]
+        
+        load_state = False
+
+        if "type_name" in in_dict.keys():
+            # in_dict is state dict
+            state_dict = in_dict.copy()
+            params = state_dict["pSet"].copy()
+            load_state = True
+        else:
+            # in_dict is parameter dictionary
+            params = in_dict.copy()
+            if type(params) != type(None):
+                self.pSet["in_size"] = params["in_size"]
+                self.pSet["hidden_size"] = params["hidden_size"]
+                self.pSet["n"] = params["n"]
+                self.pSet["no_classes"] = params["no_classes"]
+                self.pSet["batch_norm"] = False
             
         self.dtype = dtype
         self.flatten = nn.Flatten()
@@ -331,7 +375,14 @@ class SHLP(HiddenLayerModel):
         
         self.ReLU = nn.ReLU()
         # define second mapping
-        self.dense = nn.Linear(self.pSet["hidden_size"], self.pSet["no_classes"])
+        modules = []
+        if self.pSet["batch_norm"]:
+            modules.append(nn.BatchNorm1d(self.pSet["hidden_size"]))
+        modules.append(nn.Linear(self.pSet["hidden_size"], self.pSet["no_classes"]))
+        self.dense = nn.Sequential(*modules)
+
+        if load_state:
+            self.load_state_dict(state_dict)
         
     def hidden(self, x: torch.Tensor):
         x_flat = self.flatten(x)
@@ -343,13 +394,13 @@ class SHLP(HiddenLayerModel):
         return self.dense(latent_activation), hidden
     
     def state_dict(self) -> dict:
-        state_dict = super().state_dict
+        state_dict = super().state_dict()
         state_dict["pSet"] = self.pSet
         state_dict["type_name"] = type(self).__name__
         return state_dict
     
     def load_state_dict(self, state_dict: dict) -> None:
-        if state_dict["type_name"] != type(self).__name_:
+        if state_dict["type_name"] != type(self).__name__:
             raise IOError(f"state_dict does not correspond to {type(self).__name__} model")
         dummy = state_dict.copy()
         del dummy["type_name"]
@@ -358,23 +409,6 @@ class SHLP(HiddenLayerModel):
         del dummy["pSet"]
 
         super().load_state_dict(dummy)
-
-
-class SpecRegModel(SHLP):
-
-    # default parameters
-    pSet = {
-        "in_size": 32*32*3,
-        "hidden_size": 2000,
-        "n": 4.5,
-        "no_classes": 10,
-        "nu": 10, # regularizing cutoff
-    }
-
-    def __init__(self, params: dict=None, sigma: float=None, dtype: torch.dtype=torch.float32, **kwargs):
-        super(SpecRegModel, self).__init__(params=params, sigma=sigma, dtype=dtype, **kwargs)
-        if type(params) != type(None):
-            self.pSet["nu"] = params["nu"]
 
 
 class IdentityModel(nn.Module):
@@ -390,6 +424,28 @@ class IdentityModel(nn.Module):
         
     def forward(self, x):
         return self.flatten(x)
+    
+
+class ModelFactory():
+    def build_from_state(self, state_dict: dict) -> HiddenLayerModel:
+        '''
+        Creates and returns a HiddenLayerModel based on the loaded state_dict.
+        Chooses the subtype based on the descriptive field "type_name" in state_dict
+        '''
+        try:
+            type_name = state_dict["type_name"]
+        except KeyError:
+            print("state_dict not supported. " + 
+                  "Misses field 'type_name' identifying the subtype of HiddenLayerModel to choose")
+
+        if state_dict["type_name"] == KHModel.__name__:
+            return KHModel(state_dict)
+        elif state_dict["type_name"] == SHLP.__name__:
+            return SHLP(state_dict)
+        elif state_dict["type_name"] == FKHL3.__name__:
+            return FKHL3(state_dict)
+        else:
+            raise ValueError(f"Model type: {type_name} not supported")
 
 
 def train_unsupervised(
