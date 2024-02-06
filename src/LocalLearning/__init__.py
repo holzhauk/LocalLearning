@@ -4,6 +4,7 @@ from .LocalLearning import FKHL3
 from .LocalLearning import KHModel
 from .LocalLearning import HiddenLayerModel
 from .LocalLearning import SHLP
+from .LocalLearning import SHLP_tanh
 from .LocalLearning import IdentityModel
 from .LocalLearning import ModelFactory
 

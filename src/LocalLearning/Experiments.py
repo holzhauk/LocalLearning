@@ -28,6 +28,7 @@ class PerturbationExperiment(ABC):
             state_dict = torch.load(directory / fn)
             model = self.theFactory.build_from_state(state_dict)
             model.to(device)
+            model.eval()
             
             # generate data subset for baseline testing
             aTestData = BaselineAccurateTestData(model, dataSet)

@@ -1,3 +1,34 @@
+'''
+Copyright 2018 Dmitry Krotov
+
+PyTorch Implementation and further modifications:
+
+Copyright 2024 Konstantin Holzhausen and University of Oslo
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+    PyTorch implementation of Biological Learning described in [3].
+
+    [3] Dmitry Krotov and John J. Hopfield, "Unsupervised learning by competing hidden units.", 2019.
+        PNAS, Vol. 116, No. 16 (https://doi.org/10.1073/pnas.1820458116)
+
+    repository: https://github.com/DimaKrotov/Biological_Learning
+    commit: 45478bb8143cc6aa3984c040dfd1bc8bc44e4e29
+
+    A copy of the Apache License is found in the LICENSE file in the root 
+    directory of this source tree.
+'''
+
 from abc import ABC, abstractmethod
 
 import math
@@ -344,7 +375,7 @@ class SHLP(HiddenLayerModel):
         if "type_name" in in_dict.keys():
             # in_dict is state dict
             state_dict = in_dict.copy()
-            params = state_dict["pSet"].copy()
+            self.pSet = state_dict["pSet"].copy()
             load_state = True
         else:
             # in_dict is parameter dictionary
@@ -354,7 +385,7 @@ class SHLP(HiddenLayerModel):
                 self.pSet["hidden_size"] = params["hidden_size"]
                 self.pSet["n"] = params["n"]
                 self.pSet["no_classes"] = params["no_classes"]
-                self.pSet["batch_norm"] = False
+                self.pSet["batch_norm"] = batch_norm
             
         self.dtype = dtype
         self.flatten = nn.Flatten()
@@ -409,6 +440,13 @@ class SHLP(HiddenLayerModel):
         del dummy["pSet"]
 
         super().load_state_dict(dummy)
+        
+class SHLP_tanh(SHLP):
+    # single hidden layer perceptron model
+    
+    def __init__(self, in_dict: dict=None, sigma: float=None, batch_norm=False, dtype: torch.dtype=torch.float32, **kwargs):
+        super(SHLP_tanh, self).__init__(in_dict=in_dict, sigma=sigma, batch_norm=batch_norm, dtype=dtype, **kwargs)
+        self.ReLU = nn.Tanh() 
 
 
 class IdentityModel(nn.Module):
@@ -442,6 +480,8 @@ class ModelFactory():
             return KHModel(state_dict)
         elif state_dict["type_name"] == SHLP.__name__:
             return SHLP(state_dict)
+        elif state_dict["type_name"] == SHLP_tanh.__name__:
+            return SHLP_tanh(state_dict)
         elif state_dict["type_name"] == FKHL3.__name__:
             return FKHL3(state_dict)
         else:

@@ -8,7 +8,14 @@ from .Trainers import Trainer
 from .LocalLearning import HiddenLayerModel 
 
 '''
-Regularizers are implemented as Decorators modifying Trainer in Trainers.py
+Regularizers are implemented as Decorators, following Josue Nassar and Piotr Aleksander Soko's
+design principle
+
+repository: https://github.com/josuenassar/power_law
+commit: 13f8f36f9cbe57a22fd5a5f7f2c7a73c1f322671
+
+
+The Decorators modify Trainer in Trainers.py
 '''
 
 class Regularizer(ABC):
@@ -185,10 +192,46 @@ class Regularizer(ABC):
         return None
 
 
+'''
+Copyright (c) Facebook, Inc. and its affiliates.
+
+The following code that defines the class JFReg(Regularizer) constitues 
+a modified version of the PyTorch implementation of Jacobian regularization described in [1].
+As such, it is released under the MIT License (see below).
+Here, we modified the code in way to make it comply with the decorator design principle used
+in this project.
+
+    [1] Judy Hoffman, Daniel A. Roberts, and Sho Yaida,
+        "Robust Learning with Jacobian Regularization," 2019.
+        [arxiv:1908.02729](https://arxiv.org/abs/1908.02729)
+
+The end of the code base that is released under the <Copyright (c) Facebook, Inc. and its affiliates.>
+is indicated by the << END OF Copyright (c) Facebook, Inc. and its affiliates. >> mark.
+        
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+'''
+
+
 class JFReg(Regularizer):
-    '''
-    Implementation from Hoffman et al.
-    '''
+    
     no_projections = 1
 
     def __init__(self, alpha_JF=0.0, n=1):
@@ -306,10 +349,20 @@ class JFReg(Regularizer):
     def _epoch_postprocessing_eval(cls, obj_ref) -> None:
         obj_ref.log["eval_JFReg_score"].append(obj_ref.eval_JFReg_score)
 
+'''END OF Copyright (c) Facebook, Inc. and its affiliates.'''
+
 
 class SpecReg(Regularizer):
     '''
-    Implementation from Nassar et al.
+    Implementation of Spectral Regularization described in [2]
+
+    [2] Josue Nassar, "On 1/n neural representation and robustness.", 
+        Advances in Neural Information Processing Systems., 33.
+
+    Original code base: 
+        repository: https://github.com/josuenassar/power_law
+        commit: 13f8f36f9cbe57a22fd5a5f7f2c7a73c1f322671
+
     '''
 
     alpha = 1.0 # power law exponent

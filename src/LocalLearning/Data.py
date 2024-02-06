@@ -88,9 +88,9 @@ class LpUnitCIFAR10(datasets.CIFAR10):
 
 
 class LpUnitMNIST(datasets.MNIST):
-    def __init__(self, root, train=True, device=torch.device('cpu'), p=2.0, **kwargs):
+    def __init__(self, root, transform, train=True, device=torch.device('cpu'), p=2.0, **kwargs):
         super(LpUnitMNIST, self).__init__(
-            root=root, transform=ToTensor(), train=train, download=True, **kwargs,
+            root=root, transform=transform, train=train, download=True, **kwargs,
         )
         self.p = p
         self.flat = nn.Flatten()
@@ -98,7 +98,7 @@ class LpUnitMNIST(datasets.MNIST):
         self.data = self.data.type(torch.float32)
         #self.data = self.data.to(self.device)
         self.data /= torch.norm(self.flat(self.data), p=self.p, dim=-1)[:, None, None]
-        self.data = self.data.detach().cpu().numpy()
+        self.data = self.data.detach().cpu().numpy().copy()
 
     def __len__(self):
         return len(self.data)
