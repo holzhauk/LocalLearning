@@ -25,8 +25,7 @@ Copyright 2024 Konstantin Holzhausen and University of Oslo
     repository: https://github.com/DimaKrotov/Biological_Learning
     commit: 45478bb8143cc6aa3984c040dfd1bc8bc44e4e29
 
-    A copy of the Apache License is found in the LICENSE file in the root 
-    directory of this source tree.
+    A copy of the Apache License is found in the LICENSE.Apache2 file in this directory
 '''
 
 from abc import ABC, abstractmethod
