@@ -7,7 +7,9 @@ Apart from the explicitely marked sections, this project is published under the 
 under the following copyright.
 
 Copyright (c) 2024 Konstantin Holzhausen and University of Oslo
+
 ---
+
 Code in the file `src/LocalLearning/LocalLearning.py` is entirely under the Apache License 2.0 under the following copyrights.
 
 Copyright (c) 2018 Dmitry Krotov
@@ -18,7 +20,9 @@ Copyright(c) 2024 Konstantin Holzhausen and University of Oslo
 Parts are a PyTorch implementation based on Dmitry Krotov's Biological Learning described in [1]
 repository: https://github.com/DimaKrotov/Biological_Learning
 commit: 45478bb8143cc6aa3984c040dfd1bc8bc44e4e29
+
 ---
+
 A section in the file `src/LocalLearning/Regularizers.py` is under the MIT License under the following copyright.
 
 Copyright (c) Facebook, Inc. and its affiliates.
