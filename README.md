@@ -14,12 +14,12 @@ Code in the file `src/LocalLearning/LocalLearning.py` is entirely under the Apac
 
 Copyright (c) 2018 Dmitry Krotov
 
-PyTorch implementation and further modifications:
+PyTorch implementation and further modifications:  
 Copyright(c) 2024 Konstantin Holzhausen and University of Oslo
 
-Parts are a PyTorch implementation based on Dmitry Krotov's Biological Learning described in [1]
-repository: https://github.com/DimaKrotov/Biological_Learning
-commit: 45478bb8143cc6aa3984c040dfd1bc8bc44e4e29
+Parts are a PyTorch implementation based on Dmitry Krotov's Biological Learning described in [1]  
+repository: https://github.com/DimaKrotov/Biological_Learning  
+commit: 45478bb8143cc6aa3984c040dfd1bc8bc44e4e29  
 
 ---
 
