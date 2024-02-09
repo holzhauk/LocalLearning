@@ -27,28 +27,28 @@ A section in the file `src/LocalLearning/Regularizers.py` is under the MIT Licen
 
 Copyright (c) Facebook, Inc. and its affiliates.
 
-It contains a modified version of the PyTorch implementation of Jacobian regularization described in [2].
-repository: https://github.com/facebookresearch/jacobian_regularizer
-commit: 32bb044c4c0163c908ef3c166d07d4ab2a248e07
+It contains a modified version of the PyTorch implementation of Jacobian regularization described in [2].  
+repository: https://github.com/facebookresearch/jacobian_regularizer  
+commit: 32bb044c4c0163c908ef3c166d07d4ab2a248e07  
 
 
 Another section contains a modified version of the PyTorch implementation of Spectral Regularization described in [3].
-In addition, the regularizer design principle was heavily influenced by Josua Nassar's code.
-repository: https://github.com/josuenassar/power_law
-commit: 13f8f36f9cbe57a22fd5a5f7f2c7a73c1f322671
+In addition, the regularizer design principle was heavily influenced by Josua Nassar's code.  
+repository: https://github.com/josuenassar/power_law  
+commit: 13f8f36f9cbe57a22fd5a5f7f2c7a73c1f322671  
 
 
 # References
-[1] Dmitry Krotov and John J. Hopfield, "Unsupervised learning by competing hidden units.", 2019.
-    PNAS, Vol. 116, No. 16 [doi](https://doi.org/10.1073/pnas.1820458116)
+[1] Dmitry Krotov and John J. Hopfield, "Unsupervised learning by competing hidden units.", 2019.  
+    PNAS, Vol. 116, No. 16 [doi](https://doi.org/10.1073/pnas.1820458116)  
 
-[2] Judy Hoffman, Daniel A. Roberts, and Sho Yaida,
-    "Robust Learning with Jacobian Regularization.", 2019.
-    [arxiv:1908.02729](https://arxiv.org/abs/1908.02729)
+[2] Judy Hoffman, Daniel A. Roberts, and Sho Yaida,  
+    "Robust Learning with Jacobian Regularization.", 2019.  
+    [arxiv:1908.02729](https://arxiv.org/abs/1908.02729)  
 
-[3] Josue Nassar, "On 1/n neural representation and robustness.", 
-    Advances in Neural Information Processing Systems., 33.
-    [pdf](https://proceedings.neurips.cc/paper/2020/file/44bf89b63173d40fb39f9842e308b3f9-Paper.pdf)
+[3] Josue Nassar, "On 1/n neural representation and robustness.",   
+    Advances in Neural Information Processing Systems., 33.  
+    [pdf](https://proceedings.neurips.cc/paper/2020/file/44bf89b63173d40fb39f9842e308b3f9-Paper.pdf)  
 
 
 # Using CPU: Docker Container
