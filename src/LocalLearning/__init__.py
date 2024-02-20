@@ -18,6 +18,8 @@ from .LocalLearning import ModelFactory
 from .Statistics import cov_spectrum
 from .Statistics import stringer_spectrum
 from .LocalLearning import train_unsupervised
+from .LocalLearning import weight_convergence_criterion
+from .LocalLearning import weight_mean_criterion
 
 # Tools
 from .Statistics import StatisticGardener

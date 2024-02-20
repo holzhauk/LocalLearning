@@ -6,6 +6,8 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor
 from LocalLearning import FKHL3
 from LocalLearning import train_unsupervised
+from LocalLearning import weight_convergence_criterion
+from LocalLearning import weight_mean_criterion
 
 model_ps = {
     "in_size": 28 ** 2,  # MNIST dataset consists of 28x28 pixel imgs
@@ -69,6 +71,16 @@ if __name__ == "__main__":
             checkpt_period=5,
             learning_rate=learning_rate,
             )
+    
+    # check convergence criteria
+    # weights converge towards 1.0
+    if not weight_convergence_criterion(model, 1e-2, 1e-1):
+        print("Less than 10pc of weights converged close enough. Model not saved. Try running again.")
+        os._exit(os.EX_OK)
+
+    if not weight_mean_criterion(model):
+        print("Weights converged to the wrong attractor. Model not saved. Try running again.")
+        os._exit(os.EX_OK)  
 
     torch.save(
         {

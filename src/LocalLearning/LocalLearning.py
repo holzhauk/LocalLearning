@@ -569,3 +569,35 @@ def train_half_backprop(
         with tqdm(dataloader, unit="batch") as tepoch:
             tepoch.set_description(f"Epoch: {epoch}")
             # for x, label in tepoch:
+
+
+def weight_convergence_criterion(model: KHL3, conv_tol: float, tol: float) -> bool:
+    '''
+    Checks whether the weights in have converged or not according to the criterion specified.
+    Unit is considered converged if the norm of the respective weights is closer at R than conv_tol.
+    If the fraction of converged units is larger equal tol, the model is considered converged.
+
+    ARGS:
+        model (KHL3):   Krotov and Hopfield Local Learning Model
+        conv_tol (float):   absolute tollerance in norm
+        tol (float):    relative tollerance regarding the fraction of converged units
+
+    VALS:
+        return (bool):  True if criterion is met
+    '''
+    p = model.pSet["p"]
+    R = model.pSet["R"]
+
+    ds = torch.abs(torch.norm(model.W, p=p, dim=0) - R)
+    fraction = (ds > conv_tol).sum() / model.pSet["hidden_size"]
+    return (fraction < tol)
+
+def weight_mean_criterion(model: KHL3) -> bool:
+    '''
+    Checks whether the weights are reasonable sized.
+    In rare cases, the training dynamics can diverge, 
+    which results in all negative weights close to -R for individual units. 
+    Therefore, we check whether the mean weight of each unit is reasonable
+    far away from -R. 
+    '''
+    return ((model.W.mean(dim=0) < model.pSet["R"] / 2.0).sum().item() == 0)
