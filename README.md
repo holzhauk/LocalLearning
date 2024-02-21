@@ -65,7 +65,8 @@ conda env create -f pytorch.yml
 ```
 
 # Reproducibility
-Figures, model files and experimental results are found in 
+Figures, model files and experimental results are found in
+```bash
 ├── data
 │   ├── models
 |   |   ├── ...
@@ -73,6 +74,7 @@ Figures, model files and experimental results are found in
 |   |   ├──...
 │   ├── experiments
 |   |   ├──...
+```
 
 
 To reproduce results and create another sample, run
@@ -88,6 +90,7 @@ python ./src/prune_and_plot_FKHL3_CIFAR.py ../data/repro/models/fkhl3_cifar10.pt
 . The first one learns and saves Krotov and Hopfield's local learning layer. 
 The second one executes pruning of weights if necessary, creates Figure A1 and saves it.
 This results in the following files in data.
+```bash
 ├── data
 │   ├── models
 |   |   ├── ...
@@ -102,7 +105,7 @@ This results in the following files in data.
 |   |   ├── figures
 |   |   |   ├── FigureA1-FKHL3Spectra.eps
 |   |   ├── experiments
-
+```
 At this point, the Jupyter notebooks in /notebooks can be run the following order
 to recreate all models, experimental result files and figures.
 - Training_CIFAR10.ipynb
