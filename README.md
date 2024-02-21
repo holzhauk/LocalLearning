@@ -63,3 +63,49 @@ docker run -v $PWD:/pytorch-dev/LocalLearning -p 3108:3108 -it pytorch-cpu-dev
 ```bash
 conda env create -f pytorch.yml
 ```
+
+# Reproducibility
+Figures, model files and experimental results are found in 
+├── data
+│   ├── models
+|   |   ├── ...
+│   ├── figures
+|   |   ├──...
+│   ├── experiments
+|   |   ├──...
+
+
+To reproduce results and create another sample, run
+```bash
+python ./src/create_repro.py
+```
+which creates the directory structure for reproduction and runs 
+two python scripts, equivalent to
+```bash
+python ./src/llearn_CIFAR.py ../data/repro/models/fkhl3_cifar10.pty &&
+python ./src/prune_and_plot_FKHL3_CIFAR.py ../data/repro/models/fkhl3_cifar10.pty ../data/repro/figures
+```
+. The first one learns and saves Krotov and Hopfield's local learning layer. 
+The second one executes pruning of weights if necessary, creates Figure A1 and saves it.
+This results in the following files in data.
+├── data
+│   ├── models
+|   |   ├── ...
+│   ├── figures
+|   |   ├── ...
+│   ├── experiments
+|   |   ├── ...
+|   ├── repro
+|   |   ├── models
+|   |   |   ├── fkhl3_cifar10.pty
+|   |   |   ├── fkhl3_cifar10_pruned.pty
+|   |   ├── figures
+|   |   |   ├── FigureA1-FKHL3Spectra.eps
+|   |   ├── experiments
+
+At this point, the Jupyter notebooks in /notebooks can be run the following order
+to recreate all models, experimental result files and figures.
+- Training_CIFAR10.ipynb
+- Figure1-FigureA2-AdversarialAttacks.ipynb
+- Figure2-Figure3-SpectralProbing.ipynb
+- Figure4-DecisionBoundaries.ipynb
