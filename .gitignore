@@ -89,6 +89,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+notebooks/__pycache__/
 
 # IPython
 profile_default/

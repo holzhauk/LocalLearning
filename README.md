@@ -1,5 +1,5 @@
 # LocalLearning
-Exploring Krotov and Hopfield's local learning rules, possibly improving robustness of classifiers.
+Exploring mechanisms of Neural Robustness: probing the bridge between geometry and spectrum.
 
 # License
 This project contains code under both the MIT License and the Apache License 2.0.
