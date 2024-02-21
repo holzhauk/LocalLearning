@@ -5,6 +5,8 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 from LocalLearning import FKHL3
+from LocalLearning.Data import LpUnitMNIST
+from LocalLearning.Data import DeviceDataLoader
 from LocalLearning import train_unsupervised
 from LocalLearning import weight_convergence_criterion
 from LocalLearning import weight_mean_criterion
@@ -25,10 +27,17 @@ NO_EPOCHS = 1000
 BATCH_SIZE = 100
 
 if __name__ == "__main__":
+    '''
+    Learns Krotov and Hopfield's local learning layer on MNIST data in an 
+    unsupervised fashion.
+
+    ARGS: 
+        <modelpath> (string):   path including file name to save the model to after training
+    '''
 
     if len(sys.argv) != 2:
         print("usage: python train_MNIST.py <modelpath>")
-        os._exit(os.EX_NOINPUT)
+        os._exit(os.EX_USAGE)
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -45,13 +54,13 @@ if __name__ == "__main__":
     model = FKHL3(model_ps, sigma=1.0)
     model.to(device=device)
 
-    training_data = datasets.MNIST(
-        root="../data/MNIST", train=True, download=True, transform=ToTensor()
+    training_data = datasets.LpUnitMNIST(
+        root="../data/MNIST", train=True, download=True, transform=ToTensor(), p=model.pSet["p"]
     )
 
-    dataloader_train = DataLoader(
-            training_data, batch_size=BATCH_SIZE, num_workers=4, shuffle=True
-    )
+    dataloader_train = DeviceDataLoader(
+            training_data, device=device batch_size=BATCH_SIZE, num_workers=4, shuffle=True
+            )
     
     lr = 1.0 / model_ps["tau_l"]
 
@@ -83,10 +92,6 @@ if __name__ == "__main__":
         os._exit(os.EX_OK)  
 
     torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "model_parameters": model.param_dict(),
-            "device_type": device.type,
-        },
+        model.state_dict(),
         model_path,
     )

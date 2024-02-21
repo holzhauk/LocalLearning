@@ -198,4 +198,4 @@ class StatisticGardener():
             cutoff = mu_noise - np.abs(mu_noise - mu_imgs) / 2.0
 
             model_pruned.W[:, (W.var(dim=0) >= np.exp(cutoff))] = 0.0
-            return (model_pruned, n_components, cutoff)
+            return (model_pruned, n_components, np.exp(cutoff))

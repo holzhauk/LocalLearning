@@ -178,3 +178,6 @@ tmp
 # Do not include vtu and vtk files
 **.vtu
 **.pvd
+
+# Jupyter lab/notebook checkpoints
+.ipynb_checkpoints

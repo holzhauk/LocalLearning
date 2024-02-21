@@ -600,4 +600,4 @@ def weight_mean_criterion(model: KHL3) -> bool:
     Therefore, we check whether the mean weight of each unit is reasonable
     far away from -R. 
     '''
-    return ((model.W.mean(dim=0) < model.pSet["R"] / 2.0).sum().item() == 0)
+    return ((model.W.mean(dim=0) < -model.pSet["R"] / 2.0).sum().item() == 0)

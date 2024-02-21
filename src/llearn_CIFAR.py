@@ -3,9 +3,9 @@ from pathlib import Path
 import torch
 from torchvision.transforms import ToTensor
 from LocalLearning import FKHL3
+from LocalLearning.Data import LpUnitCIFAR10
+from LocalLearning.Data import DeviceDataLoader
 from LocalLearning import train_unsupervised
-from LocalLearning import LpUnitCIFAR10
-from LocalLearning import DeviceDataLoader
 from LocalLearning import weight_convergence_criterion
 from LocalLearning import weight_mean_criterion
 
@@ -27,10 +27,17 @@ NO_EPOCHS = 1000
 BATCH_SIZE = 1000
 
 if __name__ == "__main__":
+    '''
+    Learns Krotov and Hopfield's local learning layer on CIFAR10 data in an 
+    unsupervised fashion.
+
+    ARGS: 
+        <modelpath> (string):   path including file name to save the model to after training
+    '''
 
     if len(sys.argv) != 2:
         print("usage: python train_CIFAR.py <modelpath>")
-        os._exit(os.EX_NOINPUT)
+        os._exit(os.EX_USAGE)
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -45,7 +52,7 @@ if __name__ == "__main__":
     model.to(device=device)
 
     training_data = LpUnitCIFAR10(
-            root="data/CIFAR10", train=True, transform=ToTensor(), p=model_ps["p"]
+            root="../data/CIFAR10", train=True, transform=ToTensor(), p=model_ps["p"]
     )
 
     dataloader_train = DeviceDataLoader(
@@ -62,7 +69,7 @@ if __name__ == "__main__":
         device,
         model_path,
         no_epochs=NO_EPOCHS,
-        checkpt_period=5,
+        checkpt_period=NO_EPOCHS,
         learning_rate=learning_rate,
     )
 
@@ -78,10 +85,6 @@ if __name__ == "__main__":
 
 
     torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "model_parameters": model.param_dict(),
-            "device_type": device.type,
-        },
+        model.state_dict(),
         model_path,
     )
